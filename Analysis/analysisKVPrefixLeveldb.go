@@ -268,8 +268,8 @@ func main() {
 	defer db.Close()
 
 	// Store the statistics of each prefix, set the bucket width to 100 bytes
-	const bucketWidth = 100
-	const outputFilePath = "output.txt" // output file path
+	const bucketWidth = 10
+	const outputFilePath = "level-output.txt" // output file path
 	const progressInterval = 1000       // output progress every 1000 KV pairs
 
 	prefixStatsMap := make(map[string]*PrefixStats)

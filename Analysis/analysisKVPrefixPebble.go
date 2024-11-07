@@ -251,8 +251,8 @@ func main() {
 	}
 	defer db.Close()
 
-	const bucketWidth = 100
-	const outputFilePath = "output.txt"
+	const bucketWidth = 10
+	const outputFilePath = "pebble-output.txt"
 	const progressInterval = 1000
 
 	prefixStatsMap := make(map[string]*PrefixStats)

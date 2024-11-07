@@ -20,7 +20,6 @@ package pebble
 import (
 	"bytes"
 	"fmt"
-	stdlog "log"
 	"os"
 	"runtime"
 	"sync"
@@ -80,8 +79,7 @@ type Database struct {
 	quitChan chan chan error // Quit channel to stop the metrics collection before closing the database
 	closed   bool            // keep track of whether we're Closed
 
-	log      log.Logger     // Contextual logger tracking the database path
-	KVLogger *stdlog.Logger // Logger for key-value pair operations
+	log log.Logger // Contextual logger tracking the database path
 
 	activeComp    int           // Current number of active compactions
 	compStartTime time.Time     // The start time of the earliest currently-active compaction
@@ -145,6 +143,22 @@ func (l panicLogger) Fatalf(format string, args ...interface{}) {
 	panic(fmt.Errorf("fatal: "+format, args...))
 }
 
+func AppendLogMessage(logMessage string) error {
+	logFile, err := os.OpenFile("pebble.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to open log file: %w", err)
+	}
+	defer logFile.Close()
+	timestamp := time.Now().Format("2006-01-02 15:04:05")
+	formattedMessage := fmt.Sprintf("%s pebble: %s\n", timestamp, logMessage)
+
+	if _, err := logFile.WriteString(formattedMessage); err != nil {
+		return fmt.Errorf("failed to write log message: %w", err)
+	}
+
+	return nil
+}
+
 // New returns a wrapped pebble DB object. The namespace is the prefix that the
 // metrics reporting should use for surfacing internal stats.
 func New(file string, cache int, handles int, namespace string, readonly bool, ephemeral bool) (*Database, error) {
@@ -155,15 +169,6 @@ func New(file string, cache int, handles int, namespace string, readonly bool, e
 	if handles < minHandles {
 		handles = minHandles
 	}
-	// create a KV logger
-	stdLogFile, err := os.OpenFile("pebble.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-
-	if err != nil {
-		stdlog.Fatalf("Failed to open log file: %v", err)
-	}
-	defer stdLogFile.Close()
-	pebbleLogger := stdlog.New(stdLogFile, "pebble: ", stdlog.LstdFlags|stdlog.Lshortfile)
-	pebbleLogger.Println("The KV Logger is created")
 	// Following are the previous code of Geth
 	logger := log.New("database", file)
 	logger.Info("Allocated cache and file handles", "cache", common.StorageSize(cache*1024*1024), "handles", handles)
@@ -197,7 +202,6 @@ func New(file string, cache int, handles int, namespace string, readonly bool, e
 	db := &Database{
 		fn:           file,
 		log:          logger,
-		KVLogger:     pebbleLogger,
 		quitChan:     make(chan chan error),
 		writeOptions: &pebble.WriteOptions{Sync: !ephemeral},
 	}
@@ -270,7 +274,6 @@ func New(file string, cache int, handles int, namespace string, readonly bool, e
 
 	// Start up the metrics gathering and return
 	go db.meter(metricsGatheringInterval, namespace)
-	db.KVLogger.Println("The database is created (Tested with the logger in the pebble instance)")
 	return db, nil
 }
 
@@ -292,14 +295,15 @@ func (d *Database) Close() error {
 		}
 		d.quitChan = nil
 	}
-	d.KVLogger.Println("Closing database", "path", d.fn)
+	AppendLogMessage("Closing database")
 	return d.db.Close()
 }
 
 // Has retrieves if a key is present in the key-value store.
 func (d *Database) Has(key []byte) (bool, error) {
 	d.quitLock.RLock()
-	d.KVLogger.Println("OPType: Has", "key:", key)
+	s := fmt.Sprintf("OPType: Has key: %x, size: %d", key, len(key))
+	AppendLogMessage(s)
 	defer d.quitLock.RUnlock()
 	if d.closed {
 		return false, pebble.ErrClosed
@@ -320,7 +324,8 @@ func (d *Database) Has(key []byte) (bool, error) {
 func (d *Database) Get(key []byte) ([]byte, error) {
 	d.quitLock.RLock()
 	defer d.quitLock.RUnlock()
-	d.KVLogger.Println("OPType: Get", "key:", key)
+	s := fmt.Sprintf("OPType: Get key: %x, size: %d", key, len(key))
+	AppendLogMessage(s)
 	if d.closed {
 		return nil, pebble.ErrClosed
 	}
@@ -340,7 +345,8 @@ func (d *Database) Get(key []byte) ([]byte, error) {
 func (d *Database) Put(key []byte, value []byte) error {
 	d.quitLock.RLock()
 	defer d.quitLock.RUnlock()
-	d.KVLogger.Println("OPType: Put", "key:", key, "value:", value)
+	s := fmt.Sprintf("OPType: Put key: %x, size: %d, value: %x, size: %d", key, len(key), value, len(value))
+	AppendLogMessage(s)
 	if d.closed {
 		return pebble.ErrClosed
 	}
@@ -351,7 +357,8 @@ func (d *Database) Put(key []byte, value []byte) error {
 func (d *Database) Delete(key []byte) error {
 	d.quitLock.RLock()
 	defer d.quitLock.RUnlock()
-	d.KVLogger.Println("OPType: Delete", "key:", key)
+	s := fmt.Sprintf("OPType: Delete key: %x, size: %d", key, len(key))
+	AppendLogMessage(s)
 	if d.closed {
 		return pebble.ErrClosed
 	}
@@ -361,7 +368,8 @@ func (d *Database) Delete(key []byte) error {
 // NewBatch creates a write-only key-value store that buffers changes to its host
 // database until a final write is called.
 func (d *Database) NewBatch() ethdb.Batch {
-	d.KVLogger.Println("OPType: NewBatch")
+	s := "OPType: NewBatch"
+	AppendLogMessage(s)
 	return &batch{
 		b:  d.db.NewBatch(),
 		db: d,
@@ -370,7 +378,8 @@ func (d *Database) NewBatch() ethdb.Batch {
 
 // NewBatchWithSize creates a write-only database batch with pre-allocated buffer.
 func (d *Database) NewBatchWithSize(size int) ethdb.Batch {
-	d.KVLogger.Println("OPType: NewBatchWithSize", "size:", size)
+	s := fmt.Sprintf("OPType: NewBatchWithSize size: %d", size)
+	AppendLogMessage(s)
 	return &batch{
 		b:  d.db.NewBatchWithSize(size),
 		db: d,
@@ -406,7 +415,8 @@ func (d *Database) Stat() (string, error) {
 // is treated as a key after all keys in the data store. If both is nil then it
 // will compact entire data store.
 func (d *Database) Compact(start []byte, limit []byte) error {
-	d.KVLogger.Println("OPType: Compact", "start:", start, "limit:", limit)
+	s := fmt.Sprintf("OPType: Compact start: %x limit: %x", start, limit)
+	AppendLogMessage(s)
 	// There is no special flag to represent the end of key range
 	// in pebble(nil in leveldb). Use an ugly hack to construct a
 	// large key to represent it.
@@ -546,7 +556,8 @@ type batch struct {
 
 // Put inserts the given value into the batch for later committing.
 func (b *batch) Put(key, value []byte) error {
-	b.db.KVLogger.Println("OPType: BatchPut", "key:", key, "value:", value)
+	s := fmt.Sprintf("OPType: BatchPut key: %x, size: %d, value: %x, size: %d", key, len(key), value, len(value))
+	AppendLogMessage(s)
 	if err := b.b.Set(key, value, nil); err != nil {
 		return err
 	}
@@ -556,7 +567,8 @@ func (b *batch) Put(key, value []byte) error {
 
 // Delete inserts the key removal into the batch for later committing.
 func (b *batch) Delete(key []byte) error {
-	b.db.KVLogger.Println("OPType: BatchDelete", "key:", key)
+	s := fmt.Sprintf("OPType: BatchDelete key: %x, size: %d", key, len(key))
+	AppendLogMessage(s)
 	if err := b.b.Delete(key, nil); err != nil {
 		return err
 	}
@@ -566,7 +578,8 @@ func (b *batch) Delete(key []byte) error {
 
 // ValueSize retrieves the amount of data queued up for writing.
 func (b *batch) ValueSize() int {
-	b.db.KVLogger.Println("OPType: GetBatchValueSize", "size:", b.size)
+	s := fmt.Sprintf("OPType: GetBatchValueSize size: %d", b.size)
+	AppendLogMessage(s)
 	return b.size
 }
 
@@ -574,7 +587,8 @@ func (b *batch) ValueSize() int {
 func (b *batch) Write() error {
 	b.db.quitLock.RLock()
 	defer b.db.quitLock.RUnlock()
-	b.db.KVLogger.Println("OPType: BatchWrite")
+	s := "OPType: BatchWrite Commit"
+	AppendLogMessage(s)
 	if b.db.closed {
 		return pebble.ErrClosed
 	}
@@ -625,7 +639,8 @@ type pebbleIterator struct {
 // of database content with a particular key prefix, starting at a particular
 // initial key (or after, if it does not exist).
 func (d *Database) NewIterator(prefix []byte, start []byte) ethdb.Iterator {
-	d.KVLogger.Println("OPType: NewIterator", "prefix:", prefix, "start:", start)
+	s := fmt.Sprintf("OPType: NewIterator prefix: %x start: %x", prefix, start)
+	AppendLogMessage(s)
 	iter, _ := d.db.NewIter(&pebble.IterOptions{
 		LowerBound: append(prefix, start...),
 		UpperBound: upperBound(prefix),
