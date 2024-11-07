@@ -22,6 +22,8 @@ package leveldb
 
 import (
 	"fmt"
+	stdlog "log"
+	"os"
 	"sync"
 	"time"
 
@@ -80,7 +82,8 @@ type Database struct {
 	quitLock sync.Mutex      // Mutex protecting the quit channel access
 	quitChan chan chan error // Quit channel to stop the metrics collection before closing the database
 
-	log log.Logger // Contextual logger tracking the database path
+	log      log.Logger // Contextual logger tracking the database path
+	KVLogger *stdlog.Logger
 }
 
 // New returns a wrapped LevelDB object. The namespace is the prefix that the
@@ -108,6 +111,16 @@ func New(file string, cache int, handles int, namespace string, readonly bool) (
 // metrics reporting should use for surfacing internal stats.
 // The customize function allows the caller to modify the leveldb options.
 func NewCustom(file string, namespace string, customize func(options *opt.Options)) (*Database, error) {
+	// Create new system log to a specific file
+	stdLogFile, err := os.OpenFile("leveldb.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+
+	if err != nil {
+		stdlog.Fatalf("Failed to open log file: %v", err)
+	}
+	defer stdLogFile.Close()
+	leveldbLogger := stdlog.New(stdLogFile, "leveldb: ", stdlog.LstdFlags|stdlog.Lshortfile)
+	leveldbLogger.Println("The KV Logger is created")
+	// following are previous functions
 	options := configureOptions(customize)
 	logger := log.New("database", file)
 	usedCache := options.GetBlockCacheCapacity() + options.GetWriteBuffer()*2
@@ -130,6 +143,7 @@ func NewCustom(file string, namespace string, customize func(options *opt.Option
 		fn:       file,
 		db:       db,
 		log:      logger,
+		KVLogger: leveldbLogger,
 		quitChan: make(chan chan error),
 	}
 	ldb.compTimeMeter = metrics.NewRegisteredMeter(namespace+"compact/time", nil)
@@ -148,6 +162,7 @@ func NewCustom(file string, namespace string, customize func(options *opt.Option
 
 	// Start up the metrics gathering and return
 	go ldb.meter(metricsGatheringInterval, namespace)
+	ldb.KVLogger.Println("The database is created (Tested with the logger in the leveldb instance)")
 	return ldb, nil
 }
 
@@ -179,17 +194,20 @@ func (db *Database) Close() error {
 		}
 		db.quitChan = nil
 	}
+	db.KVLogger.Println("Closing database", "path", db.fn)
 	return db.db.Close()
 }
 
 // Has retrieves if a key is present in the key-value store.
 func (db *Database) Has(key []byte) (bool, error) {
+	db.KVLogger.Println("OPType: Has", "key:", key)
 	return db.db.Has(key, nil)
 }
 
 // Get retrieves the given key if it's present in the key-value store.
 func (db *Database) Get(key []byte) ([]byte, error) {
 	dat, err := db.db.Get(key, nil)
+	db.KVLogger.Println("OPType: Get", "key:", key, "value:", dat)
 	if err != nil {
 		return nil, err
 	}
@@ -198,17 +216,20 @@ func (db *Database) Get(key []byte) ([]byte, error) {
 
 // Put inserts the given value into the key-value store.
 func (db *Database) Put(key []byte, value []byte) error {
+	db.KVLogger.Println("OPType: Put", "key:", key, "value:", value)
 	return db.db.Put(key, value, nil)
 }
 
 // Delete removes the key from the key-value store.
 func (db *Database) Delete(key []byte) error {
+	db.KVLogger.Println("OPType: Delete", "key:", key)
 	return db.db.Delete(key, nil)
 }
 
 // NewBatch creates a write-only key-value store that buffers changes to its host
 // database until a final write is called.
 func (db *Database) NewBatch() ethdb.Batch {
+	db.KVLogger.Println("OPType: NewBatch")
 	return &batch{
 		db: db.db,
 		b:  new(leveldb.Batch),
@@ -217,6 +238,7 @@ func (db *Database) NewBatch() ethdb.Batch {
 
 // NewBatchWithSize creates a write-only database batch with pre-allocated buffer.
 func (db *Database) NewBatchWithSize(size int) ethdb.Batch {
+	db.KVLogger.Println("OPType: NewBatchWithSize", "size:", size)
 	return &batch{
 		db: db.db,
 		b:  leveldb.MakeBatch(size),
@@ -227,6 +249,7 @@ func (db *Database) NewBatchWithSize(size int) ethdb.Batch {
 // of database content with a particular key prefix, starting at a particular
 // initial key (or after, if it does not exist).
 func (db *Database) NewIterator(prefix []byte, start []byte) ethdb.Iterator {
+	db.KVLogger.Println("OPType: NewIterator", "prefix:", prefix, "start:", start)
 	return db.db.NewIterator(bytesPrefixRange(prefix, start), nil)
 }
 
@@ -287,6 +310,7 @@ func (db *Database) Stat() (string, error) {
 // is treated as a key after all keys in the data store. If both is nil then it
 // will compact entire data store.
 func (db *Database) Compact(start []byte, limit []byte) error {
+	db.KVLogger.Println("OPType: Compact", "start:", start, "limit:", limit)
 	return db.db.CompactRange(util.Range{Start: start, Limit: limit})
 }
 
