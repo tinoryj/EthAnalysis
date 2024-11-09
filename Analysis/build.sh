@@ -16,5 +16,7 @@ if [ "$ShouldInstall" == "install" ]; then
     go get github.com/prometheus/client_model/go@v0.2.1-0.20210607210712-147c58e9608a
     go get github.com/golang/snappy
 fi
+
 go build -o db_stats_leveldb analysisKVPrefixLeveldb.go
 go build -o db_stats_pebble analysisKVPrefixPebble.go
+go build -o op_stats_prefix_count analysisKVPrefixOPType.go

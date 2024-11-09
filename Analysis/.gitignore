@@ -1,3 +1,4 @@
 db_stats_*
 db_stats
+op_stats_*
 *.txt

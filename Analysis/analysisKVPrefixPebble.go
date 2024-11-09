@@ -4,166 +4,167 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sort"
 
 	"github.com/cockroachdb/pebble"
 )
 
 var prefixes = [][]byte{
-    // databaseVersionKey tracks the current database version.
-    []byte("DatabaseVersion"),
+	// databaseVersionKey tracks the current database version.
+	[]byte("DatabaseVersion"),
 
-    // headHeaderKey tracks the latest known header's hash.
-    []byte("LastHeader"),
+	// headHeaderKey tracks the latest known header's hash.
+	[]byte("LastHeader"),
 
-    // headBlockKey tracks the latest known full block's hash.
-    []byte("LastBlock"),
+	// headBlockKey tracks the latest known full block's hash.
+	[]byte("LastBlock"),
 
-    // headFastBlockKey tracks the latest known incomplete block's hash during fast sync.
-    []byte("LastFast"),
+	// headFastBlockKey tracks the latest known incomplete block's hash during fast sync.
+	[]byte("LastFast"),
 
-    // headFinalizedBlockKey tracks the latest known finalized block hash.
-    []byte("LastFinalized"),
+	// headFinalizedBlockKey tracks the latest known finalized block hash.
+	[]byte("LastFinalized"),
 
-    // persistentStateIDKey tracks the id of latest stored state (for path-based only).
-    []byte("LastStateID"),
+	// persistentStateIDKey tracks the id of latest stored state (for path-based only).
+	[]byte("LastStateID"),
 
-    // lastPivotKey tracks the last pivot block used by fast sync (to reenable on sethead).
-    []byte("LastPivot"),
+	// lastPivotKey tracks the last pivot block used by fast sync (to reenable on sethead).
+	[]byte("LastPivot"),
 
-    // fastTrieProgressKey tracks the number of trie entries imported during fast sync.
-    []byte("TrieSync"),
+	// fastTrieProgressKey tracks the number of trie entries imported during fast sync.
+	[]byte("TrieSync"),
 
-    // snapshotDisabledKey flags that the snapshot should not be maintained due to initial sync.
-    []byte("SnapshotDisabled"),
+	// snapshotDisabledKey flags that the snapshot should not be maintained due to initial sync.
+	[]byte("SnapshotDisabled"),
 
-    // SnapshotRootKey tracks the hash of the last snapshot.
-    []byte("SnapshotRoot"),
+	// SnapshotRootKey tracks the hash of the last snapshot.
+	[]byte("SnapshotRoot"),
 
-    // snapshotJournalKey tracks the in-memory diff layers across restarts.
-    []byte("SnapshotJournal"),
+	// snapshotJournalKey tracks the in-memory diff layers across restarts.
+	[]byte("SnapshotJournal"),
 
-    // snapshotGeneratorKey tracks the snapshot generation marker across restarts.
-    []byte("SnapshotGenerator"),
+	// snapshotGeneratorKey tracks the snapshot generation marker across restarts.
+	[]byte("SnapshotGenerator"),
 
-    // snapshotRecoveryKey tracks the snapshot recovery marker across restarts.
-    []byte("SnapshotRecovery"),
+	// snapshotRecoveryKey tracks the snapshot recovery marker across restarts.
+	[]byte("SnapshotRecovery"),
 
-    // snapshotSyncStatusKey tracks the snapshot sync status across restarts.
-    []byte("SnapshotSyncStatus"),
+	// snapshotSyncStatusKey tracks the snapshot sync status across restarts.
+	[]byte("SnapshotSyncStatus"),
 
-    // skeletonSyncStatusKey tracks the skeleton sync status across restarts.
-    []byte("SkeletonSyncStatus"),
+	// skeletonSyncStatusKey tracks the skeleton sync status across restarts.
+	[]byte("SkeletonSyncStatus"),
 
-    // trieJournalKey tracks the in-memory trie node layers across restarts.
-    []byte("TrieJournal"),
+	// trieJournalKey tracks the in-memory trie node layers across restarts.
+	[]byte("TrieJournal"),
 
-    // txIndexTailKey tracks the oldest block whose transactions have been indexed.
-    []byte("TransactionIndexTail"),
+	// txIndexTailKey tracks the oldest block whose transactions have been indexed.
+	[]byte("TransactionIndexTail"),
 
-    // fastTxLookupLimitKey tracks the transaction lookup limit during fast sync.
-    []byte("FastTransactionLookupLimit"),
+	// fastTxLookupLimitKey tracks the transaction lookup limit during fast sync.
+	[]byte("FastTransactionLookupLimit"),
 
-    // badBlockKey tracks the list of bad blocks seen by local.
-    []byte("InvalidBlock"),
+	// badBlockKey tracks the list of bad blocks seen by local.
+	[]byte("InvalidBlock"),
 
-    // uncleanShutdownKey tracks the list of local crashes.
-    []byte("unclean-shutdown"), // config prefix for the db
+	// uncleanShutdownKey tracks the list of local crashes.
+	[]byte("unclean-shutdown"), // config prefix for the db
 
-    // transitionStatusKey tracks the eth2 transition status.
-    []byte("eth2-transition"),
+	// transitionStatusKey tracks the eth2 transition status.
+	[]byte("eth2-transition"),
 
-    // snapSyncStatusFlagKey flags that status of snap sync.
-    []byte("SnapSyncStatus"),
+	// snapSyncStatusFlagKey flags that status of snap sync.
+	[]byte("SnapSyncStatus"),
 
-    // headerPrefix is used for header data storage.
-    []byte("h"), 
+	// headerPrefix is used for header data storage.
+	[]byte("h"),
 
-    // headerTDSuffix is used for total difficulty storage.
-    []byte("t"),
+	// headerTDSuffix is used for total difficulty storage.
+	[]byte("t"),
 
-    // headerHashSuffix is used for header hash storage.
-    []byte("n"),
+	// headerHashSuffix is used for header hash storage.
+	[]byte("n"),
 
-    // headerNumberPrefix is used for header number storage.
-    []byte("H"),
+	// headerNumberPrefix is used for header number storage.
+	[]byte("H"),
 
-    // blockBodyPrefix is used for block body storage.
-    []byte("b"),
+	// blockBodyPrefix is used for block body storage.
+	[]byte("b"),
 
-    // blockReceiptsPrefix is used for block receipts storage.
-    []byte("r"),
+	// blockReceiptsPrefix is used for block receipts storage.
+	[]byte("r"),
 
-    // txLookupPrefix is used for transaction lookup.
-    []byte("l"),
+	// txLookupPrefix is used for transaction lookup.
+	[]byte("l"),
 
-    // bloomBitsPrefix is used for bloom filter bits storage.
-    []byte("B"),
+	// bloomBitsPrefix is used for bloom filter bits storage.
+	[]byte("B"),
 
-    // SnapshotAccountPrefix is used for snapshot account storage.
-    []byte("a"),
+	// SnapshotAccountPrefix is used for snapshot account storage.
+	[]byte("a"),
 
-    // SnapshotStoragePrefix is used for snapshot storage trie values.
-    []byte("o"),
+	// SnapshotStoragePrefix is used for snapshot storage trie values.
+	[]byte("o"),
 
-    // CodePrefix is used for account code storage.
-    []byte("c"),
+	// CodePrefix is used for account code storage.
+	[]byte("c"),
 
-    // skeletonHeaderPrefix is used for skeleton header storage.
-    []byte("S"),
+	// skeletonHeaderPrefix is used for skeleton header storage.
+	[]byte("S"),
 
-    // TrieNodeAccountPrefix is used for trie node account storage.
-    []byte("A"),
+	// TrieNodeAccountPrefix is used for trie node account storage.
+	[]byte("A"),
 
-    // TrieNodeStoragePrefix is used for trie node storage paths.
-    []byte("O"),
+	// TrieNodeStoragePrefix is used for trie node storage paths.
+	[]byte("O"),
 
-    // stateIDPrefix is used for state ID storage.
-    []byte("L"),
+	// stateIDPrefix is used for state ID storage.
+	[]byte("L"),
 
-    // VerklePrefix is used for Verkle trie data storage.
-    []byte("v"),
+	// VerklePrefix is used for Verkle trie data storage.
+	[]byte("v"),
 
-    // PreimagePrefix is used for preimage data.
-    []byte("secure-key-"),
+	// PreimagePrefix is used for preimage data.
+	[]byte("secure-key-"),
 
-    // configPrefix is used for database configuration.
-    []byte("ethereum-config-"),
+	// configPrefix is used for database configuration.
+	[]byte("ethereum-config-"),
 
-    // genesisPrefix is used for genesis state storage.
-    []byte("ethereum-genesis-"),
+	// genesisPrefix is used for genesis state storage.
+	[]byte("ethereum-genesis-"),
 
-    // BloomBitsIndexPrefix is used for chain indexer progress tracking.
-    []byte("iB"),
+	// BloomBitsIndexPrefix is used for chain indexer progress tracking.
+	[]byte("iB"),
 
-    // ChtPrefix is used for CHT root storage.
-    []byte("chtRootV2-"),
+	// ChtPrefix is used for CHT root storage.
+	[]byte("chtRootV2-"),
 
-    // ChtTablePrefix is used for CHT table storage.
-    []byte("cht-"),
+	// ChtTablePrefix is used for CHT table storage.
+	[]byte("cht-"),
 
-    // ChtIndexTablePrefix is used for CHT index table storage.
-    []byte("chtIndexV2-"),
+	// ChtIndexTablePrefix is used for CHT index table storage.
+	[]byte("chtIndexV2-"),
 
-    // BloomTriePrefix is used for bloom trie root storage.
-    []byte("bltRoot-"),
+	// BloomTriePrefix is used for bloom trie root storage.
+	[]byte("bltRoot-"),
 
-    // BloomTrieTablePrefix is used for bloom trie table storage.
-    []byte("blt-"),
+	// BloomTrieTablePrefix is used for bloom trie table storage.
+	[]byte("blt-"),
 
-    // BloomTrieIndexPrefix is used for bloom trie index storage.
-    []byte("bltIndex-"),
+	// BloomTrieIndexPrefix is used for bloom trie index storage.
+	[]byte("bltIndex-"),
 
-    // CliqueSnapshotPrefix is used for clique consensus snapshot storage.
-    []byte("clique-"),
+	// CliqueSnapshotPrefix is used for clique consensus snapshot storage.
+	[]byte("clique-"),
 
-    // BestUpdateKey is used for LightClientUpdate storage.
-    []byte("update-"),
+	// BestUpdateKey is used for LightClientUpdate storage.
+	[]byte("update-"),
 
-    // FixedCommitteeRootKey is used for fixed committee root hash storage.
-    []byte("fixedRoot-"),
+	// FixedCommitteeRootKey is used for fixed committee root hash storage.
+	[]byte("fixedRoot-"),
 
-    // SyncCommitteeKey is used for serialized committee storage.
-    []byte("committee-"),
+	// SyncCommitteeKey is used for serialized committee storage.
+	[]byte("committee-"),
 }
 
 func Equal(a, b []byte) bool {
@@ -242,6 +243,24 @@ func (ps *PrefixStats) averageSize() float64 {
 	return float64(ps.TotalSize) / float64(ps.Count)
 }
 
+// PrintSortedHistogram takes a histogram map and bucket width, and prints the histogram sorted by bucket lower bounds
+func PrintSortedHistogram(outputFile *os.File, histogram map[int]int, bucketWidth int) {
+	// Extract all bucket lower bounds
+	buckets := make([]int, 0, len(histogram))
+	for bucket := range histogram {
+		buckets = append(buckets, bucket)
+	}
+
+	// Sort the bucket lower bounds in ascending order
+	sort.Ints(buckets)
+
+	// Print the histogram in sorted order
+	for _, bucket := range buckets {
+		count := histogram[bucket]
+		fmt.Fprintf(outputFile, "    Size %d - %d B: %d \n", bucket, bucket+bucketWidth-1, count)
+	}
+}
+
 // Main function to analyze the KV pairs in a LevelDB database
 func main() {
 	file := "/mnt/sn640/Analysis/MainnetDB-241101/chaindata"
@@ -317,21 +336,15 @@ func main() {
 		fmt.Fprintf(outputFile, "  Min size for keys: %d\n", stats.MinSizeKey)
 		fmt.Fprintf(outputFile, "  Max size for keys: %d\n", stats.MaxSizeKey)
 		fmt.Fprintf(outputFile, "  Key size distribution (Bucket width: %d B):\n", bucketWidth)
-		for bucket, count := range stats.SizeHistogramKey {
-			fmt.Fprintf(outputFile, "    Size %d - %d B: %d \n", bucket, bucket+bucketWidth-1, count)
-		}
+		PrintSortedHistogram(outputFile, stats.SizeHistogramKey, stats.BucketWidth)
 		fmt.Fprintf(outputFile, "  Min size for values: %d\n", stats.MinSizeValue)
 		fmt.Fprintf(outputFile, "  Max size for values: %d\n", stats.MaxSizeValue)
 		fmt.Fprintf(outputFile, "  Value size distribution (Bucket width: %d B):\n", bucketWidth)
-		for bucket, count := range stats.SizeHistogramValue {
-			fmt.Fprintf(outputFile, "    Size %d - %d B: %d \n", bucket, bucket+bucketWidth-1, count)
-		}
+		PrintSortedHistogram(outputFile, stats.SizeHistogramValue, stats.BucketWidth)
 		fmt.Fprintf(outputFile, "  Min size for KVs: %d\n", stats.MinSizeKV)
 		fmt.Fprintf(outputFile, "  Max size for KVs: %d\n", stats.MaxSizeKV)
 		fmt.Fprintf(outputFile, "  KV pair size distribution (Bucket width: %d B):\n", bucketWidth)
-		for bucket, count := range stats.SizeHistogramKV {
-			fmt.Fprintf(outputFile, "    Size %d - %d B: %d \n", bucket, bucket+bucketWidth-1, count)
-		}
+		PrintSortedHistogram(outputFile, stats.SizeHistogramKV, stats.BucketWidth)
 		fmt.Fprintln(outputFile)
 	}
 
