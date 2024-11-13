@@ -15,6 +15,9 @@ if [ "$ShouldInstall" == "install" ]; then
     go get github.com/golang/protobuf/proto
     go get github.com/prometheus/client_model/go@v0.2.1-0.20210607210712-147c58e9608a
     go get github.com/golang/snappy
+    go get gonum.org/v1/plot
+    go get gonum.org/v1/plot/plotter
+    go get gonum.org/v1/plot/plotutil
 fi
 
 go build -o db_stats_leveldb analysisKVPrefixLeveldb.go

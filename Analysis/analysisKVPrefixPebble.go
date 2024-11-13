@@ -7,6 +7,9 @@ import (
 	"sort"
 
 	"github.com/cockroachdb/pebble"
+	"gonum.org/v1/plot"
+	"gonum.org/v1/plot/plotter"
+	"gonum.org/v1/plot/plotutil"
 )
 
 var prefixes = [][]byte{
@@ -168,7 +171,6 @@ var prefixes = [][]byte{
 }
 
 func Equal(a, b []byte) bool {
-	// Neither cmd/compile nor gccgo allocates for these string conversions.
 	return string(a) == string(b)
 }
 
@@ -201,11 +203,9 @@ type PrefixStats struct {
 	BucketWidth        int         // Width of each bucket
 }
 
-// Update the statistics with a new KV pair size
 func (ps *PrefixStats) update(sizeValue int, sizeKey int) {
 	ps.Count++
 	ps.TotalSize += (sizeValue + sizeKey)
-	// Update the min and max size and histogram for value
 	if sizeValue < ps.MinSizeValue || ps.MinSizeValue == 0 {
 		ps.MinSizeValue = sizeValue
 	}
@@ -214,7 +214,6 @@ func (ps *PrefixStats) update(sizeValue int, sizeKey int) {
 	}
 	bucket := sizeValue / ps.BucketWidth * ps.BucketWidth
 	ps.SizeHistogramValue[bucket]++
-	// Update the min and max size and histogram for key
 	if sizeKey < ps.MinSizeKey || ps.MinSizeKey == 0 {
 		ps.MinSizeKey = sizeKey
 	}
@@ -223,7 +222,6 @@ func (ps *PrefixStats) update(sizeValue int, sizeKey int) {
 	}
 	bucket = sizeKey / ps.BucketWidth * ps.BucketWidth
 	ps.SizeHistogramKey[bucket]++
-	// Update the min and max size and histogram for KV pair
 	sizeKV := sizeValue + sizeKey
 	if sizeKV < ps.MinSizeKV || ps.MinSizeKV == 0 {
 		ps.MinSizeKV = sizeKV
@@ -235,7 +233,6 @@ func (ps *PrefixStats) update(sizeValue int, sizeKey int) {
 	ps.SizeHistogramKV[bucket]++
 }
 
-// Calculate the average size of KV pairs
 func (ps *PrefixStats) averageSize() float64 {
 	if ps.Count == 0 {
 		return 0
@@ -243,25 +240,47 @@ func (ps *PrefixStats) averageSize() float64 {
 	return float64(ps.TotalSize) / float64(ps.Count)
 }
 
-// PrintSortedHistogram takes a histogram map and bucket width, and prints the histogram sorted by bucket lower bounds
 func PrintSortedHistogram(outputFile *os.File, histogram map[int]int, bucketWidth int) {
-	// Extract all bucket lower bounds
 	buckets := make([]int, 0, len(histogram))
 	for bucket := range histogram {
 		buckets = append(buckets, bucket)
 	}
-
-	// Sort the bucket lower bounds in ascending order
 	sort.Ints(buckets)
 
-	// Print the histogram in sorted order
 	for _, bucket := range buckets {
 		count := histogram[bucket]
 		fmt.Fprintf(outputFile, "    Size %d - %d B: %d \n", bucket, bucket+bucketWidth-1, count)
 	}
 }
 
-// Main function to analyze the KV pairs in a LevelDB database
+func PlotHistogram(prefix string, histogram map[int]int, bucketWidth int, plotTitle string, fileName string) error {
+	buckets := make([]int, 0, len(histogram))
+	for bucket := range histogram {
+		buckets = append(buckets, bucket)
+	}
+	sort.Ints(buckets)
+	points := make(plotter.XYs, len(buckets))
+	for i, bucket := range buckets {
+		points[i].X = float64(bucket)
+		points[i].Y = float64(histogram[bucket])
+	}
+
+	p := plot.New()
+	p.Title.Text = plotTitle
+	p.X.Label.Text = "Bucket Size (Bytes)"
+	p.Y.Label.Text = "Count"
+
+	err := plotutil.AddLinePoints(p, prefix, points)
+	if err != nil {
+		return err
+	}
+
+	if err := p.Save(1920, 1080, fileName); err != nil {
+		return err
+	}
+	return nil
+}
+
 func main() {
 	file := "/mnt/sn640/Analysis/MainnetDB-241101/chaindata"
 	db, err := pebble.Open(file, &pebble.Options{})
@@ -294,23 +313,18 @@ func main() {
 
 	for iter.First(); iter.Valid(); iter.Next() {
 		currentCount++
-
 		if currentCount%progressInterval == 0 {
 			fmt.Printf("\rProcessed %d KV pairs...", currentCount)
 		}
-
 		key := iter.Key()
 		valueSize := len(iter.Value())
 		keySize := len(iter.Key())
-
-		// Extract the prefix of the key
 		currentPrefix := ""
 		if prefix, matched := matchesPrefix(key); matched {
 			currentPrefix = string(prefix)
 		} else {
 			currentPrefix = noPrefix
 		}
-
 		if _, exists := prefixStatsMap[currentPrefix]; !exists {
 			fmt.Printf("Locate New prefix: %s\n", currentPrefix)
 			prefixStatsMap[currentPrefix] = &PrefixStats{
@@ -337,14 +351,20 @@ func main() {
 		fmt.Fprintf(outputFile, "  Max size for keys: %d\n", stats.MaxSizeKey)
 		fmt.Fprintf(outputFile, "  Key size distribution (Bucket width: %d B):\n", bucketWidth)
 		PrintSortedHistogram(outputFile, stats.SizeHistogramKey, stats.BucketWidth)
+		plotFileName := fmt.Sprintf("%s_key_histogram.png", prefix)
+		PlotHistogram(prefix, stats.SizeHistogramKey, stats.BucketWidth, "Key Size Distribution", plotFileName)
 		fmt.Fprintf(outputFile, "  Min size for values: %d\n", stats.MinSizeValue)
 		fmt.Fprintf(outputFile, "  Max size for values: %d\n", stats.MaxSizeValue)
 		fmt.Fprintf(outputFile, "  Value size distribution (Bucket width: %d B):\n", bucketWidth)
 		PrintSortedHistogram(outputFile, stats.SizeHistogramValue, stats.BucketWidth)
+		plotFileName = fmt.Sprintf("%s_value_histogram.png", prefix)
+		PlotHistogram(prefix, stats.SizeHistogramValue, stats.BucketWidth, "Value Size Distribution", plotFileName)
 		fmt.Fprintf(outputFile, "  Min size for KVs: %d\n", stats.MinSizeKV)
 		fmt.Fprintf(outputFile, "  Max size for KVs: %d\n", stats.MaxSizeKV)
 		fmt.Fprintf(outputFile, "  KV pair size distribution (Bucket width: %d B):\n", bucketWidth)
 		PrintSortedHistogram(outputFile, stats.SizeHistogramKV, stats.BucketWidth)
+		plotFileName = fmt.Sprintf("%s_kv_histogram.png", prefix)
+		PlotHistogram(prefix, stats.SizeHistogramKV, stats.BucketWidth, "KV Pair Size Distribution", plotFileName)
 		fmt.Fprintln(outputFile)
 	}
 
