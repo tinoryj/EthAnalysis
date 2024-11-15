@@ -95,7 +95,7 @@ func ParseLogLine(line string) (opType string, key []byte, category string, err 
 
 	// If no match or OPType is missing, classify as noPrefix
 	if len(matches) < 2 || (matches[1] == "" && matches[3] == "") {
-		return "", nil, "noPrefix", fmt.Errorf("failed to parse line: %s", line)
+		return "", nil, "noPrefix", fmt.Errorf("Find no key when parse line: %s", line)
 	}
 
 	// Determine the OPType
@@ -188,9 +188,9 @@ func PrintStats(stats map[string]*OperationStats, outputFile *os.File) {
 
 func main() {
 	// Replace "logFilePath" with the path to the operation log file
-	logFilePath := "/mnt/sn640/Analysis/block14971412-block15416214-KV-operations.log"
+	logFilePath := "/mnt/sn640/Analysis/block18121461-block18620085-KV-operations.log"
 	outputFilePath := "operation_count.txt"
-	progressInterval := 1000
+	progressInterval := 100000
 	// Process the log file
 	stats, err := ProcessLogFile(logFilePath, progressInterval)
 	if err != nil {
