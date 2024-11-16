@@ -334,14 +334,8 @@ void SignalHandler(int signal)
 
 int main(int argc, char* argv[])
 {
-    std::string logFilePath;
-    if (argc == 1) {
-        logFilePath = "/mnt/sn640/Analysis/block18121461-block18620085-KV-operations.log";
-    } else {
-        logFilePath = argv[1];
-    }
-
-    std::string outputFilePath = "operation_count.txt";
+    std::string logFilePath = argv[1];
+    std::string outputFilePath = "operation_distribution.txt";
     int progressInterval = 10000;
 
     // Register signal handler for Ctrl+C

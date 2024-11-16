@@ -5,3 +5,4 @@ op_stats_*
 *.png
 go.mod
 go.sum
+*.pdf

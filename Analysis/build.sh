@@ -22,4 +22,5 @@ fi
 
 go build -o db_stats_leveldb analysisKVPrefixLeveldb.go
 go build -o db_stats_pebble analysisKVPrefixPebble.go
-go build -o op_stats_prefix_count analysisKVPrefixOPType.go
+go build -o op_stats_prefix_count analysisKVOpDistribution.go
+g++ -std=c++17 -o op_stats_prefix_distribution countOpDistribution.cpp
