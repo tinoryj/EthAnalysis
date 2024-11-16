@@ -7,9 +7,6 @@ import (
 	"sort"
 
 	"github.com/cockroachdb/pebble"
-	"gonum.org/v1/plot"
-	"gonum.org/v1/plot/plotter"
-	"gonum.org/v1/plot/plotutil"
 )
 
 var prefixes = [][]byte{
@@ -240,49 +237,41 @@ func (ps *PrefixStats) averageSize() float64 {
 	return float64(ps.TotalSize) / float64(ps.Count)
 }
 
-func PrintSortedHistogram(outputFile *os.File, histogram map[int]int, bucketWidth int) {
+func PrintSortedHistogram(fileName string, histogram map[int]int, bucketWidth int) {
 	buckets := make([]int, 0, len(histogram))
 	for bucket := range histogram {
 		buckets = append(buckets, bucket)
 	}
 	sort.Ints(buckets)
 
-	for _, bucket := range buckets {
-		count := histogram[bucket]
-		fmt.Fprintf(outputFile, "    Size %d - %d B: %d \n", bucket, bucket+bucketWidth-1, count)
-	}
-}
-
-func PlotHistogram(prefix string, histogram map[int]int, bucketWidth int, plotTitle string, fileName string) error {
-	buckets := make([]int, 0, len(histogram))
-	for bucket := range histogram {
-		buckets = append(buckets, bucket)
-	}
-	sort.Ints(buckets)
-	points := make(plotter.XYs, len(buckets))
-	for i, bucket := range buckets {
-		points[i].X = float64(bucket)
-		points[i].Y = float64(histogram[bucket])
-	}
-
-	p := plot.New()
-	p.Title.Text = plotTitle
-	p.X.Label.Text = "Bucket Size (Bytes)"
-	p.Y.Label.Text = "Count"
-
-	err := plotutil.AddLinePoints(p, prefix, points)
+	// Create the output file
+	fmt.Printf("Creating histogram file: %s\n", fileName)
+	outputFile, err := os.Create(fileName)
 	if err != nil {
-		return err
+		log.Printf("Cannot open the output file %s: %v", fileName, err)
 	}
+	defer outputFile.Close()
+	fmt.Fprintf(outputFile, "bucket\tcount\n")
+	// Iterate through the buckets
+	for i := 0; i < len(buckets); i++ {
+		// Current bucket
+		currentBucket := buckets[i]
+		count := histogram[currentBucket]
+		fmt.Fprintf(outputFile, "%d\t%d\n", currentBucket, count)
 
-	if err := p.Save(1920, 1080, fileName); err != nil {
-		return err
+		// If not the last bucket, check for gaps
+		if i < len(buckets)-1 {
+			nextBucket := buckets[i+1]
+			for gapBucket := currentBucket + bucketWidth; gapBucket < nextBucket; gapBucket += bucketWidth {
+				// Fill gaps with count 0
+				fmt.Fprintf(outputFile, "%d\t%d\n", gapBucket, 0)
+			}
+		}
 	}
-	return nil
 }
 
 func main() {
-	file := "/mnt/sn640/Analysis/MainnetDB-241101/chaindata"
+	file := os.Args[1]
 	db, err := pebble.Open(file, &pebble.Options{})
 	if err != nil {
 		log.Fatalf("Cannot open target database, err: %v\n", err)
@@ -347,24 +336,24 @@ func main() {
 		fmt.Fprintf(outputFile, "Prefix: %s\n", prefix)
 		fmt.Fprintf(outputFile, "  KV pair number: %d\n", stats.Count)
 		fmt.Fprintf(outputFile, "  Average KV size: %.2f\n", stats.averageSize())
-		fmt.Fprintf(outputFile, "  Min size for keys: %d\n", stats.MinSizeKey)
-		fmt.Fprintf(outputFile, "  Max size for keys: %d\n", stats.MaxSizeKey)
-		fmt.Fprintf(outputFile, "  Key size distribution (Bucket width: %d B):\n", bucketWidth)
-		PrintSortedHistogram(outputFile, stats.SizeHistogramKey, stats.BucketWidth)
-		plotFileName := fmt.Sprintf("%s_key_histogram.png", prefix)
-		PlotHistogram(prefix, stats.SizeHistogramKey, stats.BucketWidth, "Key Size Distribution", plotFileName)
-		fmt.Fprintf(outputFile, "  Min size for values: %d\n", stats.MinSizeValue)
-		fmt.Fprintf(outputFile, "  Max size for values: %d\n", stats.MaxSizeValue)
-		fmt.Fprintf(outputFile, "  Value size distribution (Bucket width: %d B):\n", bucketWidth)
-		PrintSortedHistogram(outputFile, stats.SizeHistogramValue, stats.BucketWidth)
-		plotFileName = fmt.Sprintf("%s_value_histogram.png", prefix)
-		PlotHistogram(prefix, stats.SizeHistogramValue, stats.BucketWidth, "Value Size Distribution", plotFileName)
+		// fmt.Fprintf(outputFile, "  Min size for keys: %d\n", stats.MinSizeKey)
+		// fmt.Fprintf(outputFile, "  Max size for keys: %d\n", stats.MaxSizeKey)
+		// fmt.Fprintf(outputFile, "  Key size distribution (Bucket width: %d B):\n", bucketWidth)
+		// filePathForKey := fmt.Sprintf("%s_key_histogram.txt", prefix)
+		// PrintSortedHistogram(filePathForKey, stats.SizeHistogramKey, stats.BucketWidth)
+
+		// fmt.Fprintf(outputFile, "  Min size for values: %d\n", stats.MinSizeValue)
+		// fmt.Fprintf(outputFile, "  Max size for values: %d\n", stats.MaxSizeValue)
+		// fmt.Fprintf(outputFile, "  Value size distribution (Bucket width: %d B):\n", bucketWidth)
+		// filePathForValue := fmt.Sprintf("%s_value_histogram.txt", prefix)
+		// PrintSortedHistogram(filePathForValue, stats.SizeHistogramValue, stats.BucketWidth)
+	
 		fmt.Fprintf(outputFile, "  Min size for KVs: %d\n", stats.MinSizeKV)
 		fmt.Fprintf(outputFile, "  Max size for KVs: %d\n", stats.MaxSizeKV)
 		fmt.Fprintf(outputFile, "  KV pair size distribution (Bucket width: %d B):\n", bucketWidth)
-		PrintSortedHistogram(outputFile, stats.SizeHistogramKV, stats.BucketWidth)
-		plotFileName = fmt.Sprintf("%s_kv_histogram.png", prefix)
-		PlotHistogram(prefix, stats.SizeHistogramKV, stats.BucketWidth, "KV Pair Size Distribution", plotFileName)
+		filePathForKV := fmt.Sprintf("%s_kv_histogram.txt", prefix)
+		fmt.Println(filePathForKV)
+		PrintSortedHistogram(filePathForKV, stats.SizeHistogramKV, stats.BucketWidth)
 		fmt.Fprintln(outputFile)
 	}
 
