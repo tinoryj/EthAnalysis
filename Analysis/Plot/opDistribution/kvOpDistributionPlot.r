@@ -8,10 +8,11 @@ library(data.table)
 mywidth <- 10
 myheight <- 5
 colorManual <- c("#C1121F")
+n <- 1000000
 
 if (TRUE) {
     args <- commandArgs(trailingOnly = TRUE)
-    x1 <- fread(args[1], header = TRUE)
+    x1 <- fread(args[1], header = TRUE, nrows = n)
     cairo_pdf(file = args[2], width = mywidth, height = myheight)
     ggplot(data = x1, aes(x = ID, y = Count)) +
         geom_point(size = 1.5, color = colorManual) +
@@ -21,7 +22,7 @@ if (TRUE) {
         ) +
         scale_x_continuous(
             expand = c(0, 0), labels = scales::comma,
-            limits = c(0, max(x1$ID) * 1.1)
+            limits <- c(0, max(x1$ID) * 1.3)
         ) +
         geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
         geom_vline(xintercept = 0, linetype = "dashed", color = "black") +
