@@ -28,13 +28,21 @@ if [ "${expID}" == "1" ]; then
 elif [ "${expID}" == "2" ]; then
     # Exp#2 KV operations
     echo "Plot Exp#2 KV operations"
+    opType=${2:-"plot"}
     # Correctly define an array with prefix and note separated into individual elements
     prefixSet=("SnapshotAccountPrefix" "SnapshotStoragePrefix" "TrieNodeAccountPrefix" "TrieNodeStoragePrefix")
     typeSet=("get" "delete" "update")
     # Iterate over the array and split prefix and note correctly
     for prefix in "${prefixSet[@]}"; do
         for type in "${typeSet[@]}"; do
-            ./plotSingle.sh path=./opDistribution rSrc=kvOpDistributionPlot dataSrc=opDis/"${prefix}"_"${type}"_dis target=kvOpDistribution_"${prefix}_${type}"
+            if [ "${opType}" == "plot" ]; then
+                ./plotSingle.sh path=./opDistribution rSrc=kvOpDistributionPlot dataSrc=opDis/"${prefix}"_"${type}"_dis target=kvOpDistribution_"${prefix}_${type}"
+            elif [ "${opType}" == "fit" ]; then
+                ./plotSingle.sh path=./opDistribution rSrc=kvOpDistributionCurve dataSrc=opDis/"${prefix}"_"${type}"_dis target=kvOpDistribution_"${prefix}_${type}"
+            else
+                echo "Invalid opType: ${opType}"
+                exit 1
+            fi
         done
     done
 else
