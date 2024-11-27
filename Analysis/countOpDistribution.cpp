@@ -1,3 +1,4 @@
+#include <chrono>
 #include <csignal>
 #include <fstream>
 #include <iostream>
@@ -214,8 +215,10 @@ void ProcessLogFile(const std::string& filePath, int progressInterval, std::unor
     }
 
     std::string line;
-    int lineCount = 0;
+    uint64_t lineCount = 0;
+    uint64_t totalBatchNumber = targetProcessingCount / progressInterval;
 
+    auto start = std::chrono::high_resolution_clock::now();
     while (std::getline(file, line)) {
         lineCount++;
         if (lineCount > targetProcessingCount) {
@@ -224,7 +227,10 @@ void ProcessLogFile(const std::string& filePath, int progressInterval, std::unor
         }
 
         if (lineCount % progressInterval == 0) {
-            std::cout << "\rProcessed " << lineCount << " lines..." << std::flush;
+            auto end = std::chrono::high_resolution_clock::now();
+            std::chrono::duration<double> elapsed = end - start;
+            start = std::chrono::high_resolution_clock::now();
+            std::cout << "\rProcessed " << lineCount << " lines, elapsed time: " << elapsed.count() << "s, remaining time: " << (totalBatchNumber - (lineCount / progressInterval)) * elapsed.count() << " s" << std::flush;
         }
 
         std::string opType;
@@ -288,7 +294,7 @@ void PrintStats(const std::unordered_map<std::string, OperationStats>& stats, st
             });
         uint64_t id = 1;
         std::fstream currentGetFile;
-        std::string currentGetFileName = category + "_get_dis.log";
+        std::string currentGetFileName = category + "_get_dis.txt";
         currentGetFile.open(currentGetFileName, std::ios::out);
         if (!currentGetFile.is_open()) {
             std::cerr << "Error creating output file: " << currentGetFileName << std::endl;
@@ -310,7 +316,7 @@ void PrintStats(const std::unordered_map<std::string, OperationStats>& stats, st
 
         id = 1;
         std::fstream currentUpdateFile;
-        std::string currentUpdateFileName = category + "_update_dis.log";
+        std::string currentUpdateFileName = category + "_update_dis.txt";
         currentUpdateFile.open(currentUpdateFileName, std::ios::out);
         if (!currentUpdateFile.is_open()) {
             std::cerr << "Error creating output file: " << currentUpdateFileName << std::endl;
@@ -334,7 +340,7 @@ void PrintStats(const std::unordered_map<std::string, OperationStats>& stats, st
             });
         id = 1;
         std::fstream currentDeleteFile;
-        std::string currentDeleteFileName = category + "_delete_dis.log";
+        std::string currentDeleteFileName = category + "_delete_dis.txt";
         currentDeleteFile.open(currentDeleteFileName, std::ios::out);
         if (!currentDeleteFile.is_open()) {
             std::cerr << "Error creating output file: " << currentDeleteFileName << std::endl;
@@ -369,6 +375,7 @@ int main(int argc, char* argv[])
     uint64_t targetProcessingCount = std::stoull(argv[2]);
     std::string outputFilePath = "operation_distribution.txt";
     int progressInterval = 1000;
+    std::cout << "Processing log file: " << logFilePath << ", output path: " << outputFilePath << ", target processing number of records: " << targetProcessingCount << ", progress print interval: " << progressInterval << std::endl;
 
     // Register signal handler for Ctrl+C
     std::signal(SIGINT, SignalHandler);
