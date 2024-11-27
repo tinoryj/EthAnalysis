@@ -179,7 +179,34 @@ bool ParseLogLine(const std::string& line, std::string& opType, std::string& cat
     return true;
 }
 
-void ProcessLogFile(const std::string& filePath, int progressInterval, std::unordered_map<std::string, OperationStats>& stats)
+bool ParseLogLineForRangeQuery(const std::string& line, std::string& opType, std::string& category, std::string& key)
+{
+    // 正则表达式用于匹配 OPType 和 prefix（以及可选的 start）
+    static const std::regex re(R"(OPType: (\w+)(?: prefix: ([a-fA-F0-9]+))?(?: start: ([a-fA-F0-9]+))?)");
+    std::smatch matches;
+
+    // 使用正则表达式进行匹配
+    if (!std::regex_search(line, matches, re)) {
+        return false;
+    }
+
+    if (matches[1].matched) {
+        opType = matches[1].str();
+    } else {
+        return false;
+    }
+
+    if (matches[2].matched) {
+        key = matches[2].str();
+        category = MatchPrefix(matches[2].str());
+    } else {
+        category = "noPrefix";
+    }
+
+    return true;
+}
+
+void ProcessLogFile(const std::string& filePath, int progressInterval, std::unordered_map<std::string, OperationStats>& stats, uint64_t targetProcessingCount)
 {
     std::ifstream file(filePath);
     if (!file.is_open()) {
@@ -191,6 +218,10 @@ void ProcessLogFile(const std::string& filePath, int progressInterval, std::unor
 
     while (std::getline(file, line)) {
         lineCount++;
+        if (lineCount > targetProcessingCount) {
+            std::cout << "Processed " << targetProcessingCount << " lines, stop processing\n";
+            break;
+        }
 
         if (lineCount % progressInterval == 0) {
             std::cout << "\rProcessed " << lineCount << " lines..." << std::flush;
@@ -200,7 +231,9 @@ void ProcessLogFile(const std::string& filePath, int progressInterval, std::unor
         std::string category;
         std::string key;
         if (!ParseLogLine(line, opType, category, key)) {
-            std::cerr << "Warning: Failed to parse line: " << line << "\n";
+            std::cerr << "Current line: " << line << " may contain range queries\n";
+        } else if (!ParseLogLineForRangeQuery(line, opType, category, key)) {
+            std::cerr << "Warning: Failed to parse line for range query: " << line << "\n";
             continue;
         }
         stats[category].opTypeCount[opType]++;
@@ -333,14 +366,15 @@ void SignalHandler(int signal)
 int main(int argc, char* argv[])
 {
     std::string logFilePath = argv[1];
+    uint64_t targetProcessingCount = std::stoull(argv[2]);
     std::string outputFilePath = "operation_distribution.txt";
-    int progressInterval = 10000;
+    int progressInterval = 1000;
 
     // Register signal handler for Ctrl+C
     std::signal(SIGINT, SignalHandler);
 
     try {
-        ProcessLogFile(logFilePath, progressInterval, stats);
+        ProcessLogFile(logFilePath, progressInterval, stats, targetProcessingCount);
     } catch (const std::exception& e) {
         std::cerr << "Error processing log file: " << e.what() << std::endl;
         return 1;
