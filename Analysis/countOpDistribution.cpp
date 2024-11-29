@@ -19,7 +19,9 @@ struct OperationStats {
 struct OperationDistribution {
     std::unordered_map<std::string, int> getOpDistributionCount;
     std::unordered_map<std::string, int> updateOpDistributionCount;
+    std::unordered_map<std::string, int> updateNotBatchOpDistributionCount;
     std::unordered_map<std::string, int> deleteOpDistributionCount;
+    std::unordered_map<std::string, int> scanOpDistributionCountRange;
 };
 
 std::unordered_map<std::string, OperationStats> stats; // category -> OperationStats
@@ -173,6 +175,7 @@ bool ParseLogLine(const std::string& line, std::string& opType, std::string& cat
     if (matches[2].matched) {
         key = matches[2];
         category = MatchPrefix(matches[2]);
+        // std::cout << "Category: " << category << ", key: " << key << std::endl;
     } else {
         category = "noPrefix";
     }
@@ -207,7 +210,7 @@ bool ParseLogLineForRangeQuery(const std::string& line, std::string& opType, std
     return true;
 }
 
-void ProcessLogFile(const std::string& filePath, int progressInterval, std::unordered_map<std::string, OperationStats>& stats, uint64_t targetProcessingCount)
+void ProcessLogFile(const std::string& filePath, uint64_t progressInterval, std::unordered_map<std::string, OperationStats>& stats, uint64_t targetProcessingCount)
 {
     std::ifstream file(filePath);
     if (!file.is_open()) {
@@ -221,7 +224,7 @@ void ProcessLogFile(const std::string& filePath, int progressInterval, std::unor
     auto start = std::chrono::high_resolution_clock::now();
     while (std::getline(file, line)) {
         lineCount++;
-        if (lineCount > targetProcessingCount) {
+        if (lineCount == targetProcessingCount) {
             std::cout << "Processed " << targetProcessingCount << " lines, stop processing\n";
             break;
         }
@@ -238,14 +241,17 @@ void ProcessLogFile(const std::string& filePath, int progressInterval, std::unor
         std::string key;
         if (!ParseLogLine(line, opType, category, key)) {
             std::cerr << "Current line: " << line << " may contain range queries\n";
-        } else if (!ParseLogLineForRangeQuery(line, opType, category, key)) {
-            std::cerr << "Warning: Failed to parse line for range query: " << line << "\n";
-            continue;
+            if (!ParseLogLineForRangeQuery(line, opType, category, key)) {
+                std::cerr << "Warning: Failed to parse line for range query: " << line << "\n";
+                continue;
+            }
         }
+
         stats[category].opTypeCount[opType]++;
 
         if (opDistribution.find(category) == opDistribution.end()) {
             opDistribution.emplace(category, OperationDistribution());
+            // std::cout << "New category: " << category << std::endl;
         }
         if (opType == "Get") {
             if (opDistribution[category].getOpDistributionCount.find(key) == opDistribution[category].getOpDistributionCount.end()) {
@@ -259,16 +265,78 @@ void ProcessLogFile(const std::string& filePath, int progressInterval, std::unor
             } else {
                 opDistribution[category].updateOpDistributionCount[key]++;
             }
+        } else if (opType == "Put") {
+            if (opDistribution[category].updateNotBatchOpDistributionCount.find(key) == opDistribution[category].updateNotBatchOpDistributionCount.end()) {
+                opDistribution[category].updateNotBatchOpDistributionCount.emplace(key, 1);
+            } else {
+                opDistribution[category].updateNotBatchOpDistributionCount[key]++;
+            }
         } else if (opType == "BatchDelete") {
             if (opDistribution[category].deleteOpDistributionCount.find(key) == opDistribution[category].deleteOpDistributionCount.end()) {
                 opDistribution[category].deleteOpDistributionCount.emplace(key, 1);
             } else {
                 opDistribution[category].deleteOpDistributionCount[key]++;
             }
+        } else if (opType == "NewIterator") {
+            if (opDistribution[category].scanOpDistributionCountRange.find(key) == opDistribution[category].scanOpDistributionCountRange.end()) {
+                opDistribution[category].scanOpDistributionCountRange.emplace(key, 1);
+            } else {
+                opDistribution[category].scanOpDistributionCountRange[key]++;
+            }
         }
     }
     file.close();
     std::cout << "\rProcessed a total of " << lineCount << " lines." << std::endl;
+}
+
+enum class OPType {
+    GET,
+    PUT,
+    BATCHED_PUT,
+    DELETE,
+    SCAN
+};
+
+// Helper function to map enum values to strings
+std::string toString(OPType type)
+{
+    switch (type) {
+    case OPType::GET:
+        return "get";
+    case OPType::PUT:
+        return "put";
+    case OPType::BATCHED_PUT:
+        return "batched_put";
+    case OPType::DELETE:
+        return "delete";
+    case OPType::SCAN:
+        return "scan";
+    default:
+        return "unknown";
+    }
+}
+
+bool printDistributionStats(std::vector<std::pair<std::string, int>> sortedGetOps, std::string category, OPType type)
+{
+    std::sort(sortedGetOps.begin(), sortedGetOps.end(),
+        [](const std::pair<std::string, int>& a, const std::pair<std::string, int>& b) {
+            return a.second > b.second; // Descending order
+        });
+    uint64_t id = 1;
+    std::fstream currentGetFile;
+    std::string currentGetFileName = category + "_" + toString(type) + "_dis.txt";
+    currentGetFile.open(currentGetFileName, std::ios::out);
+    if (!currentGetFile.is_open()) {
+        std::cerr << "Error creating output file: " << currentGetFileName << std::endl;
+        return false;
+    }
+    currentGetFile << "ID\tCount\n";
+    for (const auto& [key, count] : sortedGetOps) {
+        currentGetFile << id << "\t" << count << "\n";
+        id++;
+    }
+    currentGetFile.close();
+    return true;
 }
 
 void PrintStats(const std::unordered_map<std::string, OperationStats>& stats, std::ofstream& outputFile)
@@ -282,76 +350,38 @@ void PrintStats(const std::unordered_map<std::string, OperationStats>& stats, st
     }
     outputFile << "\n\nDistribution of KV operations:\n";
     for (const auto& [category, opDist] : opDistribution) {
-        if (targetDistributionCountCategory.find(category) == targetDistributionCountCategory.end()) {
-            continue;
-        }
+        std::cout << "Category: " << category << std::endl;
         // sort by count in the map
-        std::vector<std::pair<std::string, int>> sortedGetOps(opDist.getOpDistributionCount.begin(),
-            opDist.getOpDistributionCount.end());
-        std::sort(sortedGetOps.begin(), sortedGetOps.end(),
-            [](const std::pair<std::string, int>& a, const std::pair<std::string, int>& b) {
-                return a.second > b.second; // Descending order
-            });
-        uint64_t id = 1;
-        std::fstream currentGetFile;
-        std::string currentGetFileName = category + "_get_dis.txt";
-        currentGetFile.open(currentGetFileName, std::ios::out);
-        if (!currentGetFile.is_open()) {
-            std::cerr << "Error creating output file: " << currentGetFileName << std::endl;
-            return;
+        if (opDist.getOpDistributionCount.size() > 1) {
+            std::cout << "\tGet operation count: " << opDist.getOpDistributionCount.size() << std::endl;
+            std::vector<std::pair<std::string, int>> sortedGetOps(opDist.getOpDistributionCount.begin(),
+                opDist.getOpDistributionCount.end());
+            printDistributionStats(sortedGetOps, category, OPType::GET);
         }
-        currentGetFile << "ID\tCount\n";
-        for (const auto& [key, count] : sortedGetOps) {
-            currentGetFile << id << "\t" << count << "\n";
-            id++;
+        if (opDist.updateOpDistributionCount.size() > 1) {
+            std::cout << "\tBatched put operation count: " << opDist.updateOpDistributionCount.size() << std::endl;
+            std::vector<std::pair<std::string, int>> sortedUpdateOps(opDist.updateOpDistributionCount.begin(),
+                opDist.updateOpDistributionCount.end());
+            printDistributionStats(sortedUpdateOps, category, OPType::BATCHED_PUT);
         }
-        currentGetFile.close();
-        // sort by count in the map
-        std::vector<std::pair<std::string, int>> sortedUpdateOps(opDist.updateOpDistributionCount.begin(),
-            opDist.updateOpDistributionCount.end());
-        std::sort(sortedUpdateOps.begin(), sortedUpdateOps.end(),
-            [](const std::pair<std::string, int>& a, const std::pair<std::string, int>& b) {
-                return a.second > b.second; // Descending order
-            });
-
-        id = 1;
-        std::fstream currentUpdateFile;
-        std::string currentUpdateFileName = category + "_update_dis.txt";
-        currentUpdateFile.open(currentUpdateFileName, std::ios::out);
-        if (!currentUpdateFile.is_open()) {
-            std::cerr << "Error creating output file: " << currentUpdateFileName << std::endl;
-            return;
+        if (opDist.updateNotBatchOpDistributionCount.size() > 1) {
+            std::cout << "\tPut operation count: " << opDist.updateNotBatchOpDistributionCount.size() << std::endl;
+            std::vector<std::pair<std::string, int>> sortedNotBatchedUpdateOps(opDist.updateNotBatchOpDistributionCount.begin(),
+                opDist.updateNotBatchOpDistributionCount.end());
+            printDistributionStats(sortedNotBatchedUpdateOps, category, OPType::PUT);
         }
-        currentUpdateFile << "ID\tCount\n";
-        for (const auto& [key, count] : sortedUpdateOps) {
-            if (count <= 1) {
-                break;
-            }
-            currentUpdateFile << id << "\t" << count << "\n";
-            id++;
+        if (opDist.deleteOpDistributionCount.size() > 1) {
+            std::cout << "\tDelete operation count: " << opDist.deleteOpDistributionCount.size() << std::endl;
+            std::vector<std::pair<std::string, int>> sortedDeleteOps(opDist.deleteOpDistributionCount.begin(),
+                opDist.deleteOpDistributionCount.end());
+            printDistributionStats(sortedDeleteOps, category, OPType::DELETE);
         }
-        currentUpdateFile.close();
-        // sort by count in the map
-        std::vector<std::pair<std::string, int>> sortedDeleteOps(opDist.deleteOpDistributionCount.begin(),
-            opDist.deleteOpDistributionCount.end());
-        std::sort(sortedDeleteOps.begin(), sortedDeleteOps.end(),
-            [](const std::pair<std::string, int>& a, const std::pair<std::string, int>& b) {
-                return a.second > b.second; // Descending order
-            });
-        id = 1;
-        std::fstream currentDeleteFile;
-        std::string currentDeleteFileName = category + "_delete_dis.txt";
-        currentDeleteFile.open(currentDeleteFileName, std::ios::out);
-        if (!currentDeleteFile.is_open()) {
-            std::cerr << "Error creating output file: " << currentDeleteFileName << std::endl;
-            return;
+        if (opDist.scanOpDistributionCountRange.size() > 1) {
+            std::cout << "\tScan operation count: " << opDist.scanOpDistributionCountRange.size() << std::endl;
+            std::vector<std::pair<std::string, int>> sortedScanOps(opDist.scanOpDistributionCountRange.begin(),
+                opDist.scanOpDistributionCountRange.end());
+            printDistributionStats(sortedScanOps, category, OPType::SCAN);
         }
-        currentDeleteFile << "ID\tCount\n";
-        for (const auto& [key, count] : sortedDeleteOps) {
-            currentDeleteFile << id << "\t" << count << "\n";
-            id++;
-        }
-        currentDeleteFile.close();
     }
 }
 
@@ -373,8 +403,11 @@ int main(int argc, char* argv[])
 {
     std::string logFilePath = argv[1];
     uint64_t targetProcessingCount = std::stoull(argv[2]);
+    uint64_t progressInterval = 1000;
+    if (argc > 3) {
+        progressInterval = std::stoull(argv[3]);
+    }
     std::string outputFilePath = "operation_distribution.txt";
-    int progressInterval = 1000;
     std::cout << "Processing log file: " << logFilePath << ", output path: " << outputFilePath << ", target processing number of records: " << targetProcessingCount << ", progress print interval: " << progressInterval << std::endl;
 
     // Register signal handler for Ctrl+C
