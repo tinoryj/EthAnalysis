@@ -1720,6 +1720,14 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool, makeWitness 
 			log.Debug("Abort during block processing")
 			break
 		}
+		// Tino: stop chain manually if reach the target block number
+		targetBlockNumber := common.GetTargetBlockNumber()
+		currentBlockNumer := block.Number().Uint64()
+		fmt.Println("<currentBlockNumber, targetBlockNumber>", currentBlockNumer, targetBlockNumber)
+		if currentBlockNumer >= targetBlockNumber {
+			log.Warn("Block import terminated due to reach the target", "number", block.Number(), "hash", block.Hash())
+			common.StopChainManually()
+		}
 		// If the block is known (in the middle of the chain), it's a special case for
 		// Clique blocks where they can share state among each other, so importing an
 		// older block might complete the state of the subsequent one. In this case,
@@ -1867,14 +1875,6 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool, makeWitness 
 		}
 	}
 	stats.ignored += it.remaining()
-	// Tino: stop chain manually if reach the target block number
-	targetBlockNumber := common.GetTargetBlockNumber()
-	currentBlockNumer := block.Number().Uint64()
-	fmt.Println("<currentBlockNumber, targetBlockNumber>", currentBlockNumer, targetBlockNumber)
-	if currentBlockNumer >= targetBlockNumber {
-		log.Warn("Block import terminated due to reach the target", "number", block.Number(), "hash", block.Hash())
-		common.StopChainManually()
-	}
 	return witness, it.index, err
 }
 
