@@ -13,6 +13,7 @@ import (
 var gethLogger syslog.Logger
 var targetBlockNumber big.Int = *big.NewInt(20500000) // we will use 20500000 to 21500000 as the target block range
 var logIsInitiated bool = false
+var shouldGlobalLogInUse bool = false
 
 func SetTargetBlockNumber(blockNumber big.Int) {
 	targetBlockNumber = blockNumber
@@ -23,6 +24,10 @@ func GetTargetBlockNumber() big.Int {
 }
 
 func InitGlobalLog(filePath string) bool {
+	if ! shouldGlobalLogInUse {
+		fmt.Println("Global log should not in use.")
+		return true
+	}
 	// Tino: Open the global logger for trace collection
 	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0666)
 	if err != nil {
