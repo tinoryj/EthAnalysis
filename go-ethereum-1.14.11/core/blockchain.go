@@ -1871,7 +1871,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool, makeWitness 
 	targetBlockNumber := common.GetTargetBlockNumber()
 	currentBlockNumer := block.Number().Uint64()
 	fmt.Println("<currentBlockNumber, targetBlockNumber>", currentBlockNumer, targetBlockNumber)
-	if currentBlockNumer >= targetBlockNumber.Uint64() {
+	if currentBlockNumer >= targetBlockNumber {
 		log.Warn("Block import terminated due to reach the target", "number", block.Number(), "hash", block.Hash())
 		common.StopChainManually()
 	}

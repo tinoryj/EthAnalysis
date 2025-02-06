@@ -3,7 +3,6 @@ package common
 import (
 	"fmt"
 	syslog "log"
-	"math/big"
 	"os"
 	"syscall"
 	"time"
@@ -11,15 +10,15 @@ import (
 
 // Tino: global logger for trace collection
 var gethLogger syslog.Logger
-var targetBlockNumber big.Int = *big.NewInt(20500000) // we will use 20500000 to 21500000 as the target block range
+var targetBlockNumber uint64 = 20500000 // we will use 20500000 to 21500000 as the target block range
 var logIsInitiated bool = false
 var shouldGlobalLogInUse bool = false
 
-func SetTargetBlockNumber(blockNumber big.Int) {
+func SetTargetBlockNumber(blockNumber uint64) {
 	targetBlockNumber = blockNumber
 }
 
-func GetTargetBlockNumber() big.Int {
+func GetTargetBlockNumber() uint64 {
 	return targetBlockNumber
 }
 
