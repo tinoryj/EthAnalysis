@@ -211,7 +211,13 @@ var (
 var app = flags.NewApp("the go-ethereum command line interface")
 
 func init() {
-	// Initialize the CLI app and start Geth
+	// Tino: Open the global logger for trace collection
+	currentLogTime := time.Now().Format("2006-01-02-15-04-05")
+	currentLogFileName := "geth-trace-" + currentLogTime
+	if !common.InitGlobalLog(currentLogFileName) {
+		fmt.Println("Error opening global log file")
+		os.Exit(1)
+	}
 	app.Action = geth
 	app.Commands = []*cli.Command{
 		// See chaincmd.go:

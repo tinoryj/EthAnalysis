@@ -1867,6 +1867,12 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool, makeWitness 
 		}
 	}
 	stats.ignored += it.remaining()
+	// Tino: stop chain manually if reach the target block number
+	targetBlockNumber := common.GetTargetBlockNumber()
+	if block.Number().Cmp(&targetBlockNumber) > 0 {
+		log.Warn("Block import terminated due to reach the target", "number", block.Number(), "hash", block.Hash())
+		common.StopChainManually()
+	}
 	return witness, it.index, err
 }
 
@@ -1896,6 +1902,8 @@ func (bc *BlockChain) processBlock(block *types.Block, statedb *state.StateDB, s
 		}()
 	}
 
+	// Tino: Output the block number and block hash for tracing
+	common.WriteGlobalLog("Processing block (start), ID: "+ block.Number().String() + ", hash: "+ block.Hash().String())
 	// Process block using the parent state as reference point
 	pstart := time.Now()
 	res, err := bc.processor.Process(block, statedb, bc.vmConfig)
@@ -1984,6 +1992,8 @@ func (bc *BlockChain) processBlock(block *types.Block, statedb *state.StateDB, s
 	blockWriteTimer.Update(time.Since(wstart) - max(statedb.AccountCommits, statedb.StorageCommits) /* concurrent */ - statedb.SnapshotCommits - statedb.TrieDBCommits)
 	blockInsertTimer.UpdateSince(start)
 
+	// Tino: Output the block number and block hash for tracing
+	common.WriteGlobalLog("Processing block (end), ID: "+ block.Number().String() + ", hash: "+ block.Hash().String())
 	return &blockProcessingResult{usedGas: res.GasUsed, procTime: proctime, status: status}, nil
 }
 

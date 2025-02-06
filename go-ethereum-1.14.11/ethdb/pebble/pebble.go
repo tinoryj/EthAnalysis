@@ -20,7 +20,6 @@ package pebble
 import (
 	"bytes"
 	"fmt"
-	"os"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -141,22 +140,6 @@ func (l panicLogger) Errorf(format string, args ...interface{}) {
 
 func (l panicLogger) Fatalf(format string, args ...interface{}) {
 	panic(fmt.Errorf("fatal: "+format, args...))
-}
-
-func AppendLogMessage(logMessage string) error {
-	logFile, err := os.OpenFile("pebble.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return fmt.Errorf("failed to open log file: %w", err)
-	}
-	defer logFile.Close()
-	timestamp := time.Now().Format("2006-01-02 15:04:05")
-	formattedMessage := fmt.Sprintf("%s pebble: %s\n", timestamp, logMessage)
-
-	if _, err := logFile.WriteString(formattedMessage); err != nil {
-		return fmt.Errorf("failed to write log message: %w", err)
-	}
-
-	return nil
 }
 
 // New returns a wrapped pebble DB object. The namespace is the prefix that the
@@ -295,15 +278,15 @@ func (d *Database) Close() error {
 		}
 		d.quitChan = nil
 	}
-	AppendLogMessage("Closing database")
+	common.WriteGlobalLog("Closing database")
 	return d.db.Close()
 }
 
 // Has retrieves if a key is present in the key-value store.
 func (d *Database) Has(key []byte) (bool, error) {
 	d.quitLock.RLock()
-	s := fmt.Sprintf("OPType: Has key: %x, size: %d", key, len(key))
-	AppendLogMessage(s)
+	s := fmt.Sprintf("OPType: Has, key: %x, size: %d", key, len(key))
+	common.WriteGlobalLog(s)
 	defer d.quitLock.RUnlock()
 	if d.closed {
 		return false, pebble.ErrClosed
@@ -324,8 +307,8 @@ func (d *Database) Has(key []byte) (bool, error) {
 func (d *Database) Get(key []byte) ([]byte, error) {
 	d.quitLock.RLock()
 	defer d.quitLock.RUnlock()
-	s := fmt.Sprintf("OPType: Get key: %x, size: %d", key, len(key))
-	AppendLogMessage(s)
+	s := fmt.Sprintf("OPType: Get, key: %x, size: %d", key, len(key))
+	common.WriteGlobalLog(s)
 	if d.closed {
 		return nil, pebble.ErrClosed
 	}
@@ -345,8 +328,8 @@ func (d *Database) Get(key []byte) ([]byte, error) {
 func (d *Database) Put(key []byte, value []byte) error {
 	d.quitLock.RLock()
 	defer d.quitLock.RUnlock()
-	s := fmt.Sprintf("OPType: Put key: %x, size: %d, value: %x, size: %d", key, len(key), value, len(value))
-	AppendLogMessage(s)
+	s := fmt.Sprintf("OPType: Put, key: %x, size: %d, value: %x, size: %d", key, len(key), value, len(value))
+	common.WriteGlobalLog(s)
 	if d.closed {
 		return pebble.ErrClosed
 	}
@@ -357,8 +340,8 @@ func (d *Database) Put(key []byte, value []byte) error {
 func (d *Database) Delete(key []byte) error {
 	d.quitLock.RLock()
 	defer d.quitLock.RUnlock()
-	s := fmt.Sprintf("OPType: Delete key: %x, size: %d", key, len(key))
-	AppendLogMessage(s)
+	s := fmt.Sprintf("OPType: Delete, key: %x, size: %d", key, len(key))
+	common.WriteGlobalLog(s)
 	if d.closed {
 		return pebble.ErrClosed
 	}
@@ -369,7 +352,7 @@ func (d *Database) Delete(key []byte) error {
 // database until a final write is called.
 func (d *Database) NewBatch() ethdb.Batch {
 	s := "OPType: NewBatch"
-	AppendLogMessage(s)
+	common.WriteGlobalLog(s)
 	return &batch{
 		b:  d.db.NewBatch(),
 		db: d,
@@ -378,8 +361,8 @@ func (d *Database) NewBatch() ethdb.Batch {
 
 // NewBatchWithSize creates a write-only database batch with pre-allocated buffer.
 func (d *Database) NewBatchWithSize(size int) ethdb.Batch {
-	s := fmt.Sprintf("OPType: NewBatchWithSize size: %d", size)
-	AppendLogMessage(s)
+	s := fmt.Sprintf("OPType: NewBatchWithSize, size: %d", size)
+	common.WriteGlobalLog(s)
 	return &batch{
 		b:  d.db.NewBatchWithSize(size),
 		db: d,
@@ -415,8 +398,8 @@ func (d *Database) Stat() (string, error) {
 // is treated as a key after all keys in the data store. If both is nil then it
 // will compact entire data store.
 func (d *Database) Compact(start []byte, limit []byte) error {
-	s := fmt.Sprintf("OPType: Compact start: %x limit: %x", start, limit)
-	AppendLogMessage(s)
+	s := fmt.Sprintf("OPType: Compact, start key: %x, end key: %x", start, limit)
+	common.WriteGlobalLog(s)
 	// There is no special flag to represent the end of key range
 	// in pebble(nil in leveldb). Use an ugly hack to construct a
 	// large key to represent it.
@@ -556,8 +539,8 @@ type batch struct {
 
 // Put inserts the given value into the batch for later committing.
 func (b *batch) Put(key, value []byte) error {
-	s := fmt.Sprintf("OPType: BatchPut key: %x, size: %d, value: %x, size: %d", key, len(key), value, len(value))
-	AppendLogMessage(s)
+	s := fmt.Sprintf("OPType: BatchPut, key: %x, size: %d, value: %x, size: %d", key, len(key), value, len(value))
+	common.WriteGlobalLog(s)
 	if err := b.b.Set(key, value, nil); err != nil {
 		return err
 	}
@@ -567,8 +550,8 @@ func (b *batch) Put(key, value []byte) error {
 
 // Delete inserts the key removal into the batch for later committing.
 func (b *batch) Delete(key []byte) error {
-	s := fmt.Sprintf("OPType: BatchDelete key: %x, size: %d", key, len(key))
-	AppendLogMessage(s)
+	s := fmt.Sprintf("OPType: BatchDelete, key: %x, size: %d", key, len(key))
+	common.WriteGlobalLog(s)
 	if err := b.b.Delete(key, nil); err != nil {
 		return err
 	}
@@ -578,8 +561,8 @@ func (b *batch) Delete(key []byte) error {
 
 // ValueSize retrieves the amount of data queued up for writing.
 func (b *batch) ValueSize() int {
-	s := fmt.Sprintf("OPType: GetBatchValueSize size: %d", b.size)
-	AppendLogMessage(s)
+	s := fmt.Sprintf("OPType: GetBatchValueSize, size: %d", b.size)
+	common.WriteGlobalLog(s)
 	return b.size
 }
 
@@ -587,8 +570,8 @@ func (b *batch) ValueSize() int {
 func (b *batch) Write() error {
 	b.db.quitLock.RLock()
 	defer b.db.quitLock.RUnlock()
-	s := "OPType: BatchWrite Commit"
-	AppendLogMessage(s)
+	s := "OPType: BatchPutCommit"
+	common.WriteGlobalLog(s)
 	if b.db.closed {
 		return pebble.ErrClosed
 	}
@@ -639,8 +622,8 @@ type pebbleIterator struct {
 // of database content with a particular key prefix, starting at a particular
 // initial key (or after, if it does not exist).
 func (d *Database) NewIterator(prefix []byte, start []byte) ethdb.Iterator {
-	s := fmt.Sprintf("OPType: NewIterator prefix: %x start: %x", prefix, start)
-	AppendLogMessage(s)
+	s := fmt.Sprintf("OPType: NewIterator, prefix: %x, start key: %x", prefix, start)
+	common.WriteGlobalLog(s)
 	iter, _ := d.db.NewIter(&pebble.IterOptions{
 		LowerBound: append(prefix, start...),
 		UpperBound: upperBound(prefix),
@@ -652,6 +635,8 @@ func (d *Database) NewIterator(prefix []byte, start []byte) ethdb.Iterator {
 // Next moves the iterator to the next key/value pair. It returns whether the
 // iterator is exhausted.
 func (iter *pebbleIterator) Next() bool {
+	s := "OPType: IteratorNext"
+	common.WriteGlobalLog(s)
 	if iter.moved {
 		iter.moved = false
 		return iter.iter.Valid()
