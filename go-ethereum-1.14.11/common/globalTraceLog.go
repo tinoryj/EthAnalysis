@@ -9,7 +9,8 @@ import (
 )
 
 // Tino: global logger for trace collection
-var gethLogger syslog.Logger
+var gethLogger *syslog.Logger
+var logFile *os.File
 var targetBlockNumber uint64 = 21500000 // we will use 20500000 to 21500000 as the target block range
 var logIsInitiated bool = false
 var shouldGlobalLogInUse bool = true
@@ -23,7 +24,7 @@ func GetTargetBlockNumber() uint64 {
 }
 
 func WriteGlobalLog(msg string) {
-	if logIsInitiated {
+	if logIsInitiated && gethLogger != nil {
 		gethLogger.Println(msg)
 	}
 }
@@ -40,14 +41,20 @@ func InitGlobalLog(filePath string) bool {
 		logIsInitiated = false
 		return false
 	}
-	defer file.Close()
-	gethLogger = *syslog.New(file, "geth: ", syslog.Lshortfile|syslog.Ldate|syslog.Ltime)
+	logFile = file
+	gethLogger = syslog.New(file, "geth: ", syslog.Lshortfile|syslog.Ldate|syslog.Ltime)
 	fmt.Println("Global log file opened successfully")
 	logIsInitiated = true
 	WriteGlobalLog("Global log file opened successfully")
 	return true
 }
 
+func CloseGlobalLog() {
+	if logFile != nil {
+		logFile.Close()
+		fmt.Println("Global log file closed")
+	}
+}
 
 func StopChainManually() {
 	pid := os.Getpid()
