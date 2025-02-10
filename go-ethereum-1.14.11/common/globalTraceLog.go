@@ -22,6 +22,12 @@ func GetTargetBlockNumber() uint64 {
 	return targetBlockNumber
 }
 
+func WriteGlobalLog(msg string) {
+	if logIsInitiated {
+		gethLogger.Println(msg)
+	}
+}
+
 func InitGlobalLog(filePath string) bool {
 	if ! shouldGlobalLogInUse {
 		fmt.Println("Global log should not in use.")
@@ -42,11 +48,6 @@ func InitGlobalLog(filePath string) bool {
 	return true
 }
 
-func WriteGlobalLog(msg string) {
-	if logIsInitiated {
-		gethLogger.Println(msg)
-	}
-}
 
 func StopChainManually() {
 	pid := os.Getpid()
