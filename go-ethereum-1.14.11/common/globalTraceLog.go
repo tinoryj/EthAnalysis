@@ -10,9 +10,9 @@ import (
 
 // Tino: global logger for trace collection
 var gethLogger syslog.Logger
-var targetBlockNumber uint64 = 20500000 // we will use 20500000 to 21500000 as the target block range
+var targetBlockNumber uint64 = 21500000 // we will use 20500000 to 21500000 as the target block range
 var logIsInitiated bool = false
-var shouldGlobalLogInUse bool = false
+var shouldGlobalLogInUse bool = true
 
 func SetTargetBlockNumber(blockNumber uint64) {
 	targetBlockNumber = blockNumber
@@ -38,6 +38,7 @@ func InitGlobalLog(filePath string) bool {
 	gethLogger = *syslog.New(file, "geth: ", syslog.Lshortfile|syslog.Ldate|syslog.Ltime)
 	fmt.Println("Global log file opened successfully")
 	logIsInitiated = true
+	WriteGlobalLog("Global log file opened successfully")
 	return true
 }
 
