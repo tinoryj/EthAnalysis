@@ -11,7 +11,7 @@ import (
 // Tino: global logger for trace collection
 var gethLogger *syslog.Logger
 var logFile *os.File
-var targetBlockNumber uint64 = 21500000 // we will use 20500000 to 21500000 as the target block range
+var targetBlockNumber uint64 = 21505000 // we will use 20500000 to 21500000 as the target block range
 var logIsInitiated bool = false
 var shouldGlobalLogInUse bool = true
 
