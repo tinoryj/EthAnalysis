@@ -6,3 +6,4 @@ op_stats_*
 go.mod
 go.sum
 *.pdf
+*.log
