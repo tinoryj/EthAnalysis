@@ -1,6 +1,7 @@
 db_stats_*
 db_stats
 op_stats_*
+db_correlation
 *.txt
 *.png
 go.mod
