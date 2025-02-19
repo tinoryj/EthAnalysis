@@ -170,7 +170,7 @@ func processLogFile(filePath string, progressInterval, targetProcessingCount, st
 	}
 
 	start := time.Now()
-
+	lineCount = 0
 	for scanner.Scan() {
 		line := scanner.Text()
 		// Loop until find a line that contains "Processing block"
@@ -194,12 +194,12 @@ func processLogFile(filePath string, progressInterval, targetProcessingCount, st
 			}
 		}
 	}
-	fmt.Print("Skip first %d lines to locate the first block (ID>=20500000) before processing\n", lineCount)
+	fmt.Print("Skip first %d lines to locate the first block (ID>=%d) before processing\n", lineCount, startBlockNumber)
 
 	for scanner.Scan() {
 		line := scanner.Text()
 		lineCount++
-		if lineCount >= targetProcessingCount {
+		if lineCount == targetProcessingCount && targetProcessingCount != 0 {
 			fmt.Println("Processed", targetProcessingCount, "lines, stop processing")
 			break
 		}
