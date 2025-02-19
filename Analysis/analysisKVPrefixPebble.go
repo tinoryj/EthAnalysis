@@ -278,8 +278,8 @@ func main() {
 	}
 	defer db.Close()
 
-	const bucketWidth = 10
-	const outputFilePath = "pebble-output.txt"
+	const bucketWidth = 1
+	const outputFilePath = "pebble-output-final.txt"
 	const progressInterval = 1000
 
 	prefixStatsMap := make(map[string]*PrefixStats)
@@ -336,17 +336,17 @@ func main() {
 		fmt.Fprintf(outputFile, "Prefix: %s\n", prefix)
 		fmt.Fprintf(outputFile, "  KV pair number: %d\n", stats.Count)
 		fmt.Fprintf(outputFile, "  Average KV size: %.2f\n", stats.averageSize())
-		// fmt.Fprintf(outputFile, "  Min size for keys: %d\n", stats.MinSizeKey)
-		// fmt.Fprintf(outputFile, "  Max size for keys: %d\n", stats.MaxSizeKey)
-		// fmt.Fprintf(outputFile, "  Key size distribution (Bucket width: %d B):\n", bucketWidth)
-		// filePathForKey := fmt.Sprintf("%s_key_histogram.txt", prefix)
-		// PrintSortedHistogram(filePathForKey, stats.SizeHistogramKey, stats.BucketWidth)
+		fmt.Fprintf(outputFile, "  Min size for keys: %d\n", stats.MinSizeKey)
+		fmt.Fprintf(outputFile, "  Max size for keys: %d\n", stats.MaxSizeKey)
+		fmt.Fprintf(outputFile, "  Key size distribution (Bucket width: %d B):\n", bucketWidth)
+		filePathForKey := fmt.Sprintf("%s_key_histogram.txt", prefix)
+		PrintSortedHistogram(filePathForKey, stats.SizeHistogramKey, stats.BucketWidth)
 
-		// fmt.Fprintf(outputFile, "  Min size for values: %d\n", stats.MinSizeValue)
-		// fmt.Fprintf(outputFile, "  Max size for values: %d\n", stats.MaxSizeValue)
-		// fmt.Fprintf(outputFile, "  Value size distribution (Bucket width: %d B):\n", bucketWidth)
-		// filePathForValue := fmt.Sprintf("%s_value_histogram.txt", prefix)
-		// PrintSortedHistogram(filePathForValue, stats.SizeHistogramValue, stats.BucketWidth)
+		fmt.Fprintf(outputFile, "  Min size for values: %d\n", stats.MinSizeValue)
+		fmt.Fprintf(outputFile, "  Max size for values: %d\n", stats.MaxSizeValue)
+		fmt.Fprintf(outputFile, "  Value size distribution (Bucket width: %d B):\n", bucketWidth)
+		filePathForValue := fmt.Sprintf("%s_value_histogram.txt", prefix)
+		PrintSortedHistogram(filePathForValue, stats.SizeHistogramValue, stats.BucketWidth)
 	
 		fmt.Fprintf(outputFile, "  Min size for KVs: %d\n", stats.MinSizeKV)
 		fmt.Fprintf(outputFile, "  Max size for KVs: %d\n", stats.MaxSizeKV)
