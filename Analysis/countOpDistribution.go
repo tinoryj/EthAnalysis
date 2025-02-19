@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"regexp"
@@ -110,6 +111,7 @@ var (
 func matchPrefix(key string) string {
 	for _, prefix := range hexPrefixes {
 		if strings.HasPrefix(key, prefix.Prefix) {
+			// fmt.Print("Matched prefix: ", prefix.Prefix, " for key: ", key, "\n")
 			return prefix.Category
 		}
 	}
@@ -117,7 +119,7 @@ func matchPrefix(key string) string {
 }
 
 func parseLogLine(line string) (string, string, string, bool) {
-	re := regexp.MustCompile(`OPType: (\w+(?: \w+)*) (?:key: ([a-fA-F0-9]+))?, size: \d+|OPType: (\w+(?: \w+)*)`)
+	re := regexp.MustCompile(`OPType: (\w+(?: \w+)*), (?:key: ([a-fA-F0-9]+))?, size: \d+|OPType: (\w+(?: \w+)*)`)
 	matches := re.FindStringSubmatch(line)
 	if matches == nil {
 		return "", "", "", false
@@ -129,16 +131,18 @@ func parseLogLine(line string) (string, string, string, bool) {
 	}
 
 	key := matches[2]
-	category := "noPrefix"
+	var category string
 	if key != "" {
 		category = matchPrefix(key)
+	} else {
+		category = "noPrefix"
 	}
 
 	return opType, category, key, true
 }
 
 func parseLogLineForRangeQuery(line string) (string, string, string, bool) {
-	re := regexp.MustCompile(`OPType: (\w+)(?: prefix: ([a-fA-F0-9]+))?(?: start: ([a-fA-F0-9]+))?`)
+	re := regexp.MustCompile(`OPType: (\w+),(?: prefix: ([a-fA-F0-9]+))?(?: start: ([a-fA-F0-9]+))?`)
 	matches := re.FindStringSubmatch(line)
 	if matches == nil {
 		return "", "", "", false
@@ -148,7 +152,7 @@ func parseLogLineForRangeQuery(line string) (string, string, string, bool) {
 	key := matches[2]
 	category := "noPrefix"
 	if key != "" {
-		category = key
+		category = matchPrefix(key)
 	}
 
 	return opType, category, key, true
@@ -161,7 +165,7 @@ func processLogFile(filePath string, progressInterval, targetProcessingCount, st
 	}
 	defer file.Close()
 
-	scanner := bufio.NewScanner(file)
+	reader := bufio.NewReader(file)
 	var lineCount uint64
 	if targetProcessingCount == 0 {
 		fmt.Println("Target processing count is 0, process the whole log file")
@@ -171,19 +175,28 @@ func processLogFile(filePath string, progressInterval, targetProcessingCount, st
 
 	start := time.Now()
 	lineCount = 0
-	for scanner.Scan() {
-		line := scanner.Text()
+	for {
+		line, err := reader.ReadString('\n') // Read until newline
+		if err != nil {
+			if err == io.EOF {
+				fmt.Println("End of file reached")
+				break
+			}
+			fmt.Println("Error reading file:", err)
+			return
+		}
+		lineCount++
+		// fmt.Println("Reading line:", line)
 		// Loop until find a line that contains "Processing block"
 		if strings.Contains(line, "Processing block (start)") {
-			lineCount++
 			re := regexp.MustCompile(`ID:\s*(\d+)`)
 			matches := re.FindStringSubmatch(line)
 			if len(matches) > 1 {
 				id, err := strconv.Atoi(matches[1]) // 将字符串转换为整数
 				if err == nil {
-					fmt.Println("Extracted ID:", id)
+					fmt.Println("May skip ID:", id)
 					if id >= int(startBlockNumber) {
-						fmt.Println("Found the first block that is larger than (%d), start processing", startBlockNumber)
+						fmt.Println("Found the first block that is larger than (", startBlockNumber, "), start processing")
 						break
 					}
 				} else {
@@ -194,10 +207,20 @@ func processLogFile(filePath string, progressInterval, targetProcessingCount, st
 			}
 		}
 	}
-	fmt.Print("Skip first %d lines to locate the first block (ID>=%d) before processing\n", lineCount, startBlockNumber)
 
-	for scanner.Scan() {
-		line := scanner.Text()
+	fmt.Print("Skip first ", lineCount, " lines to locate the first block (ID>=", startBlockNumber, ") before processing\n")
+
+	for {
+		line, err := reader.ReadString('\n') // Read until newline
+		if err != nil {
+			if err == io.EOF {
+				fmt.Println("End of file reached")
+				break
+			}
+			fmt.Println("Error reading file:", err)
+			return
+		}
+
 		lineCount++
 		if lineCount == targetProcessingCount && targetProcessingCount != 0 {
 			fmt.Println("Processed", targetProcessingCount, "lines, stop processing")
@@ -211,10 +234,10 @@ func processLogFile(filePath string, progressInterval, targetProcessingCount, st
 
 		opType, category, key, parsed := parseLogLine(line)
 		if !parsed {
-			fmt.Println("Current line: %s may contain range queries", line)
+			// fmt.Println("Current line: %s may contain range queries", line)
 			opType, category, key, parsed = parseLogLineForRangeQuery(line)
 			if !parsed {
-				fmt.Println("Warning: Failed to parse line:", line)
+				// fmt.Println("Warning: Failed to parse line:", line)
 				// Check if this is a block number line
 				if strings.Contains(line, "Processing block") {
 					re := regexp.MustCompile(`ID:\s*(\d+)`)
@@ -223,7 +246,7 @@ func processLogFile(filePath string, progressInterval, targetProcessingCount, st
 						id, err := strconv.Atoi(matches[1])
 						if err == nil {
 							if id > int(endBlockNumber) {
-								fmt.Println("Found the last block that is smaller than (%d), stop processing", endBlockNumber)
+								fmt.Println("Found the last block that is smaller than (", endBlockNumber, "), stop processing")
 								break
 							}
 						} else {
@@ -335,25 +358,13 @@ func printStats(outputFile *os.File) {
 	}
 }
 
-func signalHandler() {
+func signalHandler(outputFile *os.File) {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-c
-		file, err := os.Create("operation_count.txt")
-		if err != nil {
-			fmt.Println("Error creating output file during Ctrl+C handling")
-			os.Exit(1)
-		}
-		defer file.Close()
-		fmt.Fprintln(file, "Count of KV operations:")
-		for category, opStats := range stats {
-			fmt.Fprintf(file, "Category: %s\n", category)
-			for opType, count := range opStats.OpTypeCount {
-				fmt.Fprintf(file, "  OPType: %s, Count: %d\n", opType, count)
-			}
-		}
-		fmt.Println("Statistics written to operation_count.txt due to Ctrl+C")
+		printStats(outputFile)
+		fmt.Println("Statistics written to ", outputFile.Name(), " due to Ctrl+C")
 		os.Exit(0)
 	}()
 }
@@ -369,15 +380,14 @@ func main() {
 	progressInterval, _ := strconv.ParseUint(os.Args[4], 10, 64)
 	startBlockNumber, _ := strconv.ParseUint(os.Args[5], 10, 64)
 	endBlockNumber, _ := strconv.ParseUint(os.Args[6], 10, 64)
-
-	fmt.Println("Processing log file:", logFilePath)
-	signalHandler()
-	processLogFile(logFilePath, progressInterval, targetProcessingCount, startBlockNumber, endBlockNumber)
 	file, err := os.Create(outPutLogPath)
 	if err != nil {
 		fmt.Println("Error creating output file:", outPutLogPath)
 		return
 	}
 	defer file.Close()
+	fmt.Println("Processing log file:", logFilePath)
+	signalHandler(file)
+	processLogFile(logFilePath, progressInterval, targetProcessingCount, startBlockNumber, endBlockNumber)
 	printStats(file)
 }
