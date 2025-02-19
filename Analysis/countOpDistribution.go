@@ -324,9 +324,9 @@ func printDistributionStats(opMap map[string]int, category string, opType OPType
 	}
 	defer file.Close()
 
-	_, _ = file.WriteString("ID\tCount\n")
+	_, _ = file.WriteString("ID\tKey\tCount\n")
 	for id, entry := range sortedOps {
-		_, _ = file.WriteString(fmt.Sprintf("%d\t%d\n", id+1, entry.Count))
+		_, _ = file.WriteString(fmt.Sprintf("%d\t%s\t%d\n", id+1, entry.Key, entry.Count))
 	}
 }
 
@@ -354,11 +354,12 @@ func signalHandler() {
 }
 
 func main() {
-	if len(os.Args) < 3 {
-		fmt.Println("Usage: program <log_file_path> <target_processing_count> [progress_interval]")
+	if len(os.Args) < 4 {
+		fmt.Println("Usage: program <log_file_path> <out_put_log_path> <target_processing_count> [progress_interval]")
 		return
 	}
 	logFilePath := os.Args[1]
+	outPutLogPath := os.Args[2]
 	targetProcessingCount, _ := strconv.ParseUint(os.Args[2], 10, 64)
 	progressInterval := uint64(1000)
 	if len(os.Args) > 3 {
@@ -368,5 +369,11 @@ func main() {
 	fmt.Println("Processing log file:", logFilePath)
 	signalHandler()
 	processLogFile(logFilePath, progressInterval, targetProcessingCount)
-
+	file, err := os.Create(outPutLogPath)
+	if err != nil {
+		fmt.Println("Error creating output file:", outPutLogPath)
+		return
+	}
+	defer file.Close()
+	printStats(file)
 }
