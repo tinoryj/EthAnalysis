@@ -1,0 +1,372 @@
+package main
+
+import (
+	"bufio"
+	"fmt"
+	"os"
+	"os/signal"
+	"regexp"
+	"sort"
+	"strconv"
+	"strings"
+	"syscall"
+	"time"
+)
+
+type OPType string
+
+const (
+	GET         OPType = "get"
+	PUT         OPType = "put"
+	BATCHED_PUT OPType = "batched_put"
+	DELETE      OPType = "delete"
+	SCAN        OPType = "scan"
+)
+
+type PrefixCategory struct {
+	Prefix   string
+	Category string
+}
+
+type OperationStats struct {
+	OpTypeCount map[string]int
+}
+
+type OperationDistribution struct {
+	GetOpDistributionCount            map[string]int
+	UpdateOpDistributionCount         map[string]int
+	UpdateNotBatchOpDistributionCount map[string]int
+	DeleteOpDistributionCount         map[string]int
+	ScanOpDistributionCountRange      map[string]int
+}
+
+var (
+	stats          = make(map[string]*OperationStats)
+	opDistribution = make(map[string]*OperationDistribution)
+	hexPrefixes    = []PrefixCategory{
+		{"7365637572652d6b65792d", "PreimagePrefix"},
+		{"657468657265756d2d636f6e6669672d", "ConfigPrefix"},
+		{"657468657265756d2d67656e657369732d", "GenesisPrefix"},
+		{"636874526f6f7456322d", "ChtPrefix"},
+		{"636874496e64657856322d", "ChtIndexTablePrefix"},
+		{"6669786564526f6f742d", "FixedCommitteeRootKey"},
+		{"636f6d6d69747465652d", "SyncCommitteeKey"},
+		{"6368742d", "ChtTablePrefix"},
+		{"626c74526f6f742d", "BloomTriePrefix"},
+		{"626c74496e6465782d", "BloomTrieIndexPrefix"},
+		{"626c742d", "BloomTrieTablePrefix"},
+		{"636c697175652d", "CliqueSnapshotPrefix"},
+		{"7570646174652d", "BestUpdateKey"},
+		{"536e617073686f7453796e63537461747573", "SnapshotSyncStatusKey"},
+		{"536e617073686f7444697361626c6564", "SnapshotDisabledKey"},
+		{"536e617073686f74526f6f74", "SnapshotRootKey"},
+		{"536e617073686f744a6f75726e616c", "SnapshotJournalKey"},
+		{"536e617073686f7447656e657261746f72", "SnapshotGeneratorKey"},
+		{"536e617073686f745265636f76657279", "SnapshotRecoveryKey"},
+		{"536b656c65746f6e53796e63537461747573", "SkeletonSyncStatusKey"},
+		{"5472696553796e63", "FastTrieProgressKey"},
+		{"547269654a6f75726e616c", "TrieJournalKey"},
+		{"5472616e73616374696f6e496e6465785461696c", "TxIndexTailKey"},
+		{"466173745472616e73616374696f6e4c6f6f6b75704c696d6974", "FastTxLookupLimitKey"},
+		{"496e76616c6964426c6f636b", "BadBlockKey"},
+		{"756e636c65616e2d73687574646f776e", "UncleanShutdownKey"},
+		{"657468322d7472616e736974696f6e", "TransitionStatusKey"},
+		{"536e617053796e63537461747573", "SnapSyncStatusFlagKey"},
+		{"446174616261736556657273696f6e", "DatabaseVersionKey"},
+		{"4c617374486561646572", "HeadHeaderKey"},
+		{"4c617374426c6f636b", "HeadBlockKey"},
+		{"4c61737446617374", "HeadFastBlockKey"},
+		{"4c61737446696e616c697a6564", "HeadFinalizedBlockKey"},
+		{"4c61737453746174654944", "PersistentStateIDKey"},
+		{"4c6173745069766f74", "LastPivotKey"},
+		{"69", "BloomBitsIndexPrefix"},
+		{"68", "HeaderPrefix"},
+		{"74", "HeaderTDSuffix"},
+		{"6e", "HeaderHashSuffix"},
+		{"48", "HeaderNumberPrefix"},
+		{"62", "BlockBodyPrefix"},
+		{"72", "BlockReceiptsPrefix"},
+		{"6c", "TxLookupPrefix"},
+		{"42", "BloomBitsPrefix"},
+		{"61", "SnapshotAccountPrefix"},
+		{"6f", "SnapshotStoragePrefix"},
+		{"63", "CodePrefix"},
+		{"53", "SkeletonHeaderPrefix"},
+		{"41", "TrieNodeAccountPrefix"},
+		{"4f", "TrieNodeStoragePrefix"},
+		{"4c", "StateIDPrefix"},
+		{"76", "VerklePrefix"},
+	}
+
+	targetDistributionCountCategory = map[string]bool{
+		"TxLookupPrefix":        true,
+		"SnapshotAccountPrefix": true,
+		"SnapshotStoragePrefix": true,
+		"TrieNodeAccountPrefix": true,
+		"TrieNodeStoragePrefix": true,
+	}
+)
+
+func matchPrefix(key string) string {
+	for _, prefix := range hexPrefixes {
+		if strings.HasPrefix(key, prefix.Prefix) {
+			return prefix.Category
+		}
+	}
+	return "Unknown"
+}
+
+func parseLogLine(line string) (string, string, string, bool) {
+	re := regexp.MustCompile(`OPType: (\w+(?: \w+)*) (?:key: ([a-fA-F0-9]+))?, size: \d+|OPType: (\w+(?: \w+)*)`)
+	matches := re.FindStringSubmatch(line)
+	if matches == nil {
+		return "", "", "", false
+	}
+
+	opType := matches[1]
+	if opType == "" {
+		opType = matches[3]
+	}
+
+	key := matches[2]
+	category := "noPrefix"
+	if key != "" {
+		category = matchPrefix(key)
+	}
+
+	return opType, category, key, true
+}
+
+func parseLogLineForRangeQuery(line string) (string, string, string, bool) {
+	re := regexp.MustCompile(`OPType: (\w+)(?: prefix: ([a-fA-F0-9]+))?(?: start: ([a-fA-F0-9]+))?`)
+	matches := re.FindStringSubmatch(line)
+	if matches == nil {
+		return "", "", "", false
+	}
+
+	opType := matches[1]
+	key := matches[2]
+	category := "noPrefix"
+	if key != "" {
+		category = key
+	}
+
+	return opType, category, key, true
+}
+
+func processLogFile(filePath string, progressInterval, targetProcessingCount uint64) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to open file: %s", filePath))
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	var lineCount uint64
+	totalBatchNumber := targetProcessingCount / progressInterval
+	start := time.Now()
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		// Loop until find a line that contains "Processing block"
+		if strings.Contains(line, "Processing block (start)") {
+			lineCount++
+			re := regexp.MustCompile(`ID:\s*(\d+)`)
+			matches := re.FindStringSubmatch(line)
+			if len(matches) > 1 {
+				id, err := strconv.Atoi(matches[1]) // 将字符串转换为整数
+				if err == nil {
+					fmt.Println("Extracted ID:", id)
+					if id >= 20500000 {
+						fmt.Println("Found the first block that is larger than (20500000), start processing")
+						break
+					}
+				} else {
+					fmt.Println("Error converting ID to integer:", err)
+				}
+			} else {
+				fmt.Println("ID not found")
+			}
+		}
+	}
+	fmt.Print("Skip first %d lines to locate the first block (ID>=20500000) before processing\n", lineCount)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		lineCount++
+		if lineCount == targetProcessingCount {
+			fmt.Println("Processed", targetProcessingCount, "lines, stop processing")
+			break
+		}
+
+		if lineCount%progressInterval == 0 {
+			elapsed := time.Since(start).Seconds()
+			fmt.Printf("\rProcessed %d lines, elapsed time: %.2fs, remaining time: %.2fs", lineCount, elapsed, (float64(totalBatchNumber)-(float64(lineCount)/float64(progressInterval)))*elapsed)
+		}
+
+		opType, category, key, parsed := parseLogLine(line)
+		if !parsed {
+			fmt.Println("Current line: %s may contain range queries", line)
+			opType, category, key, parsed = parseLogLineForRangeQuery(line)
+			if !parsed {
+				fmt.Println("Warning: Failed to parse line:", line)
+				// Check if this is a block number line
+				if strings.Contains(line, "Processing block") {
+					re := regexp.MustCompile(`ID:\s*(\d+)`)
+					matches := re.FindStringSubmatch(line)
+					if len(matches) > 1 {
+						id, err := strconv.Atoi(matches[1])
+						if err == nil {
+							if id > 21500000 {
+								fmt.Println("Found the last block that is smaller than (21500000), stop processing")
+								break
+							}
+						} else {
+							fmt.Println("Error converting ID to integer:", err)
+						}
+					}
+				}
+				continue
+			}
+		}
+
+		// Update stats
+		if _, exists := stats[category]; !exists {
+			stats[category] = &OperationStats{OpTypeCount: make(map[string]int)}
+		}
+		stats[category].OpTypeCount[opType]++
+
+		// Update operation distribution
+		if _, exists := opDistribution[category]; !exists {
+			opDistribution[category] = &OperationDistribution{
+				GetOpDistributionCount:            make(map[string]int),
+				UpdateOpDistributionCount:         make(map[string]int),
+				UpdateNotBatchOpDistributionCount: make(map[string]int),
+				DeleteOpDistributionCount:         make(map[string]int),
+				ScanOpDistributionCountRange:      make(map[string]int),
+			}
+		}
+		dist := opDistribution[category]
+		switch opType {
+		case "Get":
+			dist.GetOpDistributionCount[key]++
+		case "BatchPut":
+			dist.UpdateOpDistributionCount[key]++
+		case "Put":
+			dist.UpdateNotBatchOpDistributionCount[key]++
+		case "BatchDelete":
+			dist.DeleteOpDistributionCount[key]++
+		case "NewIterator":
+			dist.ScanOpDistributionCountRange[key]++
+		}
+	}
+	fmt.Printf("\rProcessed a total of %d lines.\n", lineCount)
+}
+
+func toString(opType OPType) string {
+	return string(opType)
+}
+
+func printStats(outputFile *os.File) {
+	fmt.Fprintln(outputFile, "Count of KV operations:")
+	for category, opStats := range stats {
+		fmt.Fprintf(outputFile, "Category: %s\n", category)
+		for opType, count := range opStats.OpTypeCount {
+			fmt.Fprintf(outputFile, "  OPType: %s, Count: %d\n", opType, count)
+		}
+	}
+	fmt.Fprintln(outputFile, "\n\nDistribution of KV operations:")
+	for category, opDist := range opDistribution {
+		fmt.Println("Category:", category)
+		if len(opDist.GetOpDistributionCount) > 1 {
+			fmt.Println("\tGet operation count:", len(opDist.GetOpDistributionCount))
+			printDistributionStats(opDist.GetOpDistributionCount, category, GET)
+		}
+		if len(opDist.UpdateOpDistributionCount) > 1 {
+			fmt.Println("\tBatched put operation count:", len(opDist.UpdateOpDistributionCount))
+			printDistributionStats(opDist.UpdateOpDistributionCount, category, BATCHED_PUT)
+		}
+		if len(opDist.UpdateNotBatchOpDistributionCount) > 1 {
+			fmt.Println("\tPut operation count:", len(opDist.UpdateNotBatchOpDistributionCount))
+			printDistributionStats(opDist.UpdateNotBatchOpDistributionCount, category, PUT)
+		}
+		if len(opDist.DeleteOpDistributionCount) > 1 {
+			fmt.Println("\tDelete operation count:", len(opDist.DeleteOpDistributionCount))
+			printDistributionStats(opDist.DeleteOpDistributionCount, category, DELETE)
+		}
+		if len(opDist.ScanOpDistributionCountRange) > 1 {
+			fmt.Println("\tScan operation count:", len(opDist.ScanOpDistributionCountRange))
+			printDistributionStats(opDist.ScanOpDistributionCountRange, category, SCAN)
+		}
+	}
+}
+
+func printDistributionStats(opMap map[string]int, category string, opType OPType) {
+	sortedOps := make([]struct {
+		Key   string
+		Count int
+	}, 0, len(opMap))
+	for k, v := range opMap {
+		sortedOps = append(sortedOps, struct {
+			Key   string
+			Count int
+		}{k, v})
+	}
+	sort.Slice(sortedOps, func(i, j int) bool {
+		return sortedOps[i].Count > sortedOps[j].Count
+	})
+
+	fileName := category + "_" + toString(opType) + "_dis.txt"
+	file, err := os.Create(fileName)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating output file: %s\n", fileName)
+		return
+	}
+	defer file.Close()
+
+	_, _ = file.WriteString("ID\tCount\n")
+	for id, entry := range sortedOps {
+		_, _ = file.WriteString(fmt.Sprintf("%d\t%d\n", id+1, entry.Count))
+	}
+}
+
+func signalHandler() {
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-c
+		file, err := os.Create("operation_count.txt")
+		if err != nil {
+			fmt.Println("Error creating output file during Ctrl+C handling")
+			os.Exit(1)
+		}
+		defer file.Close()
+		fmt.Fprintln(file, "Count of KV operations:")
+		for category, opStats := range stats {
+			fmt.Fprintf(file, "Category: %s\n", category)
+			for opType, count := range opStats.OpTypeCount {
+				fmt.Fprintf(file, "  OPType: %s, Count: %d\n", opType, count)
+			}
+		}
+		fmt.Println("Statistics written to operation_count.txt due to Ctrl+C")
+		os.Exit(0)
+	}()
+}
+
+func main() {
+	if len(os.Args) < 3 {
+		fmt.Println("Usage: program <log_file_path> <target_processing_count> [progress_interval]")
+		return
+	}
+	logFilePath := os.Args[1]
+	targetProcessingCount, _ := strconv.ParseUint(os.Args[2], 10, 64)
+	progressInterval := uint64(1000)
+	if len(os.Args) > 3 {
+		progressInterval, _ = strconv.ParseUint(os.Args[3], 10, 64)
+	}
+
+	fmt.Println("Processing log file:", logFilePath)
+	signalHandler()
+	processLogFile(logFilePath, progressInterval, targetProcessingCount)
+
+}
