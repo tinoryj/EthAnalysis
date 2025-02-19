@@ -154,7 +154,7 @@ func parseLogLineForRangeQuery(line string) (string, string, string, bool) {
 	return opType, category, key, true
 }
 
-func processLogFile(filePath string, progressInterval, targetProcessingCount uint64) {
+func processLogFile(filePath string, progressInterval, targetProcessingCount, startBlockNumber, endBlockNumber uint64) {
 	file, err := os.Open(filePath)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to open file: %s", filePath))
@@ -163,7 +163,12 @@ func processLogFile(filePath string, progressInterval, targetProcessingCount uin
 
 	scanner := bufio.NewScanner(file)
 	var lineCount uint64
-	totalBatchNumber := targetProcessingCount / progressInterval
+	if targetProcessingCount == 0 {
+		fmt.Println("Target processing count is 0, process the whole log file")
+	} else {
+		fmt.Println("Target processing count is", targetProcessingCount)
+	}
+
 	start := time.Now()
 
 	for scanner.Scan() {
@@ -177,8 +182,8 @@ func processLogFile(filePath string, progressInterval, targetProcessingCount uin
 				id, err := strconv.Atoi(matches[1]) // 将字符串转换为整数
 				if err == nil {
 					fmt.Println("Extracted ID:", id)
-					if id >= 20500000 {
-						fmt.Println("Found the first block that is larger than (20500000), start processing")
+					if id >= int(startBlockNumber) {
+						fmt.Println("Found the first block that is larger than (%d), start processing", startBlockNumber)
 						break
 					}
 				} else {
@@ -194,14 +199,14 @@ func processLogFile(filePath string, progressInterval, targetProcessingCount uin
 	for scanner.Scan() {
 		line := scanner.Text()
 		lineCount++
-		if lineCount == targetProcessingCount {
+		if lineCount >= targetProcessingCount {
 			fmt.Println("Processed", targetProcessingCount, "lines, stop processing")
 			break
 		}
 
 		if lineCount%progressInterval == 0 {
 			elapsed := time.Since(start).Seconds()
-			fmt.Printf("\rProcessed %d lines, elapsed time: %.2fs, remaining time: %.2fs", lineCount, elapsed, (float64(totalBatchNumber)-(float64(lineCount)/float64(progressInterval)))*elapsed)
+			fmt.Printf("\rProcessed %d lines, elapsed time: %.2fs", lineCount, elapsed)
 		}
 
 		opType, category, key, parsed := parseLogLine(line)
@@ -217,8 +222,8 @@ func processLogFile(filePath string, progressInterval, targetProcessingCount uin
 					if len(matches) > 1 {
 						id, err := strconv.Atoi(matches[1])
 						if err == nil {
-							if id > 21500000 {
-								fmt.Println("Found the last block that is smaller than (21500000), stop processing")
+							if id > int(endBlockNumber) {
+								fmt.Println("Found the last block that is smaller than (%d), stop processing", endBlockNumber)
 								break
 							}
 						} else {
@@ -267,6 +272,35 @@ func toString(opType OPType) string {
 	return string(opType)
 }
 
+func printDistributionStats(opMap map[string]int, category string, opType OPType) {
+	sortedOps := make([]struct {
+		Key   string
+		Count int
+	}, 0, len(opMap))
+	for k, v := range opMap {
+		sortedOps = append(sortedOps, struct {
+			Key   string
+			Count int
+		}{k, v})
+	}
+	sort.Slice(sortedOps, func(i, j int) bool {
+		return sortedOps[i].Count > sortedOps[j].Count
+	})
+
+	fileName := category + "_" + toString(opType) + "_dis.txt"
+	file, err := os.Create(fileName)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating output file: %s\n", fileName)
+		return
+	}
+	defer file.Close()
+
+	_, _ = file.WriteString("ID\tKey\tCount\n")
+	for id, entry := range sortedOps {
+		_, _ = file.WriteString(fmt.Sprintf("%d\t%s\t%d\n", id+1, entry.Key, entry.Count))
+	}
+}
+
 func printStats(outputFile *os.File) {
 	fmt.Fprintln(outputFile, "Count of KV operations:")
 	for category, opStats := range stats {
@@ -301,35 +335,6 @@ func printStats(outputFile *os.File) {
 	}
 }
 
-func printDistributionStats(opMap map[string]int, category string, opType OPType) {
-	sortedOps := make([]struct {
-		Key   string
-		Count int
-	}, 0, len(opMap))
-	for k, v := range opMap {
-		sortedOps = append(sortedOps, struct {
-			Key   string
-			Count int
-		}{k, v})
-	}
-	sort.Slice(sortedOps, func(i, j int) bool {
-		return sortedOps[i].Count > sortedOps[j].Count
-	})
-
-	fileName := category + "_" + toString(opType) + "_dis.txt"
-	file, err := os.Create(fileName)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error creating output file: %s\n", fileName)
-		return
-	}
-	defer file.Close()
-
-	_, _ = file.WriteString("ID\tKey\tCount\n")
-	for id, entry := range sortedOps {
-		_, _ = file.WriteString(fmt.Sprintf("%d\t%s\t%d\n", id+1, entry.Key, entry.Count))
-	}
-}
-
 func signalHandler() {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
@@ -354,21 +359,20 @@ func signalHandler() {
 }
 
 func main() {
-	if len(os.Args) < 4 {
-		fmt.Println("Usage: program <log_file_path> <out_put_log_path> <target_processing_count> [progress_interval]")
+	if len(os.Args) < 6 {
+		fmt.Println("Usage: program <log_file_path> <out_put_log_path> <target_processing_count> <progress_interval> <start_block_number> <end_block_number>")
 		return
 	}
 	logFilePath := os.Args[1]
 	outPutLogPath := os.Args[2]
-	targetProcessingCount, _ := strconv.ParseUint(os.Args[2], 10, 64)
-	progressInterval := uint64(1000)
-	if len(os.Args) > 3 {
-		progressInterval, _ = strconv.ParseUint(os.Args[3], 10, 64)
-	}
+	targetProcessingCount, _ := strconv.ParseUint(os.Args[3], 10, 64)
+	progressInterval, _ := strconv.ParseUint(os.Args[4], 10, 64)
+	startBlockNumber, _ := strconv.ParseUint(os.Args[5], 10, 64)
+	endBlockNumber, _ := strconv.ParseUint(os.Args[6], 10, 64)
 
 	fmt.Println("Processing log file:", logFilePath)
 	signalHandler()
-	processLogFile(logFilePath, progressInterval, targetProcessingCount)
+	processLogFile(logFilePath, progressInterval, targetProcessingCount, startBlockNumber, endBlockNumber)
 	file, err := os.Create(outPutLogPath)
 	if err != nil {
 		fmt.Println("Error creating output file:", outPutLogPath)
