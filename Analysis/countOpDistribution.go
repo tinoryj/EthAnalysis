@@ -195,7 +195,7 @@ func processLogFile(filePath string, progressInterval, targetProcessingCount, st
 			if len(matches) > 1 {
 				id, err := strconv.Atoi(matches[1]) // 将字符串转换为整数
 				if err == nil {
-					fmt.Println("May skip ID:", id)
+					// fmt.Println("May skip ID:", id)
 					if id >= int(startBlockNumber) {
 						fmt.Println("Found the first block that is larger than (", startBlockNumber, "), start processing")
 						currentBlockID = uint64(id)
@@ -389,7 +389,7 @@ func main() {
 		return
 	}
 	defer file.Close()
-	fmt.Println("Processing log file:", logFilePath)
+	fmt.Println("Processing log file:", logFilePath, "output log file:", outPutLogPath, "start block ID:", startBlockNumber, "end block ID:", endBlockNumber)
 	signalHandler(file)
 	processLogFile(logFilePath, progressInterval, targetProcessingCount, startBlockNumber, endBlockNumber)
 	printStats(file)
