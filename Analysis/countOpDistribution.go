@@ -175,6 +175,7 @@ func processLogFile(filePath string, progressInterval, targetProcessingCount, st
 
 	start := time.Now()
 	lineCount = 0
+	var currentBlockID uint64
 	for {
 		line, err := reader.ReadString('\n') // Read until newline
 		if err != nil {
@@ -197,6 +198,7 @@ func processLogFile(filePath string, progressInterval, targetProcessingCount, st
 					fmt.Println("May skip ID:", id)
 					if id >= int(startBlockNumber) {
 						fmt.Println("Found the first block that is larger than (", startBlockNumber, "), start processing")
+						currentBlockID = uint64(id)
 						break
 					}
 				} else {
@@ -229,7 +231,7 @@ func processLogFile(filePath string, progressInterval, targetProcessingCount, st
 
 		if lineCount%progressInterval == 0 {
 			elapsed := time.Since(start).Seconds()
-			fmt.Printf("\rProcessed %d lines, elapsed time: %.2fs", lineCount, elapsed)
+			fmt.Printf("\rProcessed %d lines, current block ID: %d, elapsed time: %.2fs", lineCount, currentBlockID, elapsed)
 		}
 
 		opType, category, key, parsed := parseLogLine(line)
@@ -245,6 +247,7 @@ func processLogFile(filePath string, progressInterval, targetProcessingCount, st
 					if len(matches) > 1 {
 						id, err := strconv.Atoi(matches[1])
 						if err == nil {
+							currentBlockID = uint64(id)
 							if id > int(endBlockNumber) {
 								fmt.Println("Found the last block that is smaller than (", endBlockNumber, "), stop processing")
 								break
