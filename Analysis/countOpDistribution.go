@@ -19,7 +19,7 @@ type OPType string
 const (
 	GET         OPType = "get"
 	PUT         OPType = "put"
-	BATCHED_PUT OPType = "batched_put"
+	BATCHED_PUT OPType = "batchput"
 	DELETE      OPType = "delete"
 	SCAN        OPType = "scan"
 )
@@ -100,11 +100,57 @@ var (
 	}
 
 	targetDistributionCountCategory = map[string]bool{
-		"TxLookupPrefix":        true,
+		"PreimagePrefix": true,
+		"ConfigPrefix": true,
+		"GenesisPrefix": true,
+		"ChtPrefix": true,
+		"ChtIndexTablePrefix": true,
+		"FixedCommitteeRootKey": true,
+		"SyncCommitteeKey": true,
+		"ChtTablePrefix": true,
+		"BloomTriePrefix": true,
+		"BloomTrieIndexPrefix": true,
+		"BloomTrieTablePrefix": true,
+		"CliqueSnapshotPrefix": true,
+		"BestUpdateKey": true,
+		"SnapshotSyncStatusKey": true,
+		"SnapshotDisabledKey": true,
+		"SnapshotRootKey": true,
+		"SnapshotJournalKey": true,
+		"SnapshotGeneratorKey": true,
+		"SnapshotRecoveryKey": true,
+		"SkeletonSyncStatusKey": true,
+		"FastTrieProgressKey": true,
+		"TrieJournalKey": true,
+		"TxIndexTailKey": true,
+		"BadBlockKey": true,
+		"UncleanShutdownKey": true,
+		"TransitionStatusKey": true,
+		"SnapSyncStatusFlagKey": true,
+		"DatabaseVersionKey": true,
+		"HeadHeaderKey": true,
+		"HeadBlockKey": true,
+		"HeadFastBlockKey": true,
+		"HeadFinalizedBlockKey": true,
+		"PersistentStateIDKey": true,
+		"LastPivotKey": true,
+		"BloomBitsIndexPrefix": true,
+		"HeaderPrefix": true,
+		"HeaderTDSuffix": true,
+		"HeaderHashSuffix": true,
+		"HeaderNumberPrefix": true,
+		"BlockBodyPrefix": true,
+		"BlockReceiptsPrefix": true,
+		"TxLookupPrefix": true,
+		"BloomBitsPrefix": true,
 		"SnapshotAccountPrefix": true,
 		"SnapshotStoragePrefix": true,
+		"CodePrefix": true,
+		"SkeletonHeaderPrefix": true,
 		"TrieNodeAccountPrefix": true,
 		"TrieNodeStoragePrefix": true,
+		"StateIDPrefix": true,
+		"VerklePrefix": true,
 	}
 )
 
@@ -119,40 +165,25 @@ func matchPrefix(key string) string {
 }
 
 func parseLogLine(line string) (string, string, string, bool) {
-	re := regexp.MustCompile(`OPType: (\w+(?: \w+)*), (?:key: ([a-fA-F0-9]+))?, size: \d+|OPType: (\w+(?: \w+)*)`)
+	re := regexp.MustCompile(`OPType: (\w+(?: \w+)*), (?:key: ([a-fA-F0-9]+)|prefix: ([a-fA-F0-9]+))?`)
 	matches := re.FindStringSubmatch(line)
 	if matches == nil {
 		return "", "", "", false
 	}
 
 	opType := matches[1]
-	if opType == "" {
-		opType = matches[3]
-	}
+	var key, category string
 
-	key := matches[2]
-	var category string
-	if key != "" {
+	// Always set key, preferring the 'key' value, and fallback to 'prefix'
+	if matches[2] != "" {
+		key = matches[2]
+		category = matchPrefix(key) // You can implement matchPrefix as you did before
+	} else if matches[3] != "" {
+		key = matches[3]
 		category = matchPrefix(key)
 	} else {
+		key = "" // Or whatever default value you want if neither is found
 		category = "noPrefix"
-	}
-
-	return opType, category, key, true
-}
-
-func parseLogLineForRangeQuery(line string) (string, string, string, bool) {
-	re := regexp.MustCompile(`OPType: (\w+),(?: prefix: ([a-fA-F0-9]+))?(?: start: ([a-fA-F0-9]+))?`)
-	matches := re.FindStringSubmatch(line)
-	if matches == nil {
-		return "", "", "", false
-	}
-
-	opType := matches[1]
-	key := matches[2]
-	category := "noPrefix"
-	if key != "" {
-		category = matchPrefix(key)
 	}
 
 	return opType, category, key, true
@@ -236,29 +267,24 @@ func processLogFile(filePath string, progressInterval, targetProcessingCount, st
 
 		opType, category, key, parsed := parseLogLine(line)
 		if !parsed {
-			// fmt.Println("Current line: %s may contain range queries", line)
-			opType, category, key, parsed = parseLogLineForRangeQuery(line)
-			if !parsed {
-				// fmt.Println("Warning: Failed to parse line:", line)
-				// Check if this is a block number line
-				if strings.Contains(line, "Processing block") {
-					re := regexp.MustCompile(`ID:\s*(\d+)`)
-					matches := re.FindStringSubmatch(line)
-					if len(matches) > 1 {
-						id, err := strconv.Atoi(matches[1])
-						if err == nil {
-							currentBlockID = uint64(id)
-							if id > int(endBlockNumber) {
-								fmt.Println("Found the last block that is smaller than (", endBlockNumber, "), stop processing")
-								break
-							}
-						} else {
-							fmt.Println("Error converting ID to integer:", err)
+			// Check if this is a block number line
+			if strings.Contains(line, "Processing block") {
+				re := regexp.MustCompile(`ID:\s*(\d+)`)
+				matches := re.FindStringSubmatch(line)
+				if len(matches) > 1 {
+					id, err := strconv.Atoi(matches[1])
+					if err == nil {
+						currentBlockID = uint64(id)
+						if id > int(endBlockNumber) {
+							fmt.Println("Found the last block that is smaller than (", endBlockNumber, "), stop processing")
+							break
 						}
+					} else {
+						fmt.Println("Error converting ID to integer:", err)
 					}
 				}
-				continue
 			}
+			continue
 		}
 
 		// Update stats
@@ -312,7 +338,7 @@ func printDistributionStats(opMap map[string]int, category string, opType OPType
 	sort.Slice(sortedOps, func(i, j int) bool {
 		return sortedOps[i].Count > sortedOps[j].Count
 	})
-
+	
 	fileName := category + "_" + toString(opType) + "_dis.txt"
 	file, err := os.Create(fileName)
 	if err != nil {

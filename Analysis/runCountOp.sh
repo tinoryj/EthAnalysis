@@ -12,9 +12,9 @@ do
     echo "Run $i-th part"
     mkdir -p ./countKVDis-$i-block-$start_block_id-$end_block_id
     ./countOpDistribution $PATH_TO_FIRST_PART ./countKVDis.txt 0 10000 $start_block_id $end_block_id
+    mv *.txt countKVDis-$i-block-$start_block_id-$end_block_id
     start_block_id=$((start_block_id+num_blocks_in_each_run))
     end_block_id=$((end_block_id+num_blocks_in_each_run))
-    mv *.txt ./countKVDis-$i-block-$start_block_id-$end_block_id
 done
 
 start_block_id=20700000
@@ -25,7 +25,7 @@ do
     echo "Run $i-th part"
     mkdir -p ./countKVDis-$i-block-$start_block_id-$end_block_id
     ./countOpDistribution $PATH_TO_SECOND_PART ./countKVDis.txt 0 10000 $start_block_id $end_block_id
+    mv *.txt countKVDis-$i-block-$start_block_id-$end_block_id
     start_block_id=$((start_block_id+num_blocks_in_each_run))
     end_block_id=$((end_block_id+num_blocks_in_each_run))
-    mv *.txt ./countKVDis-$i-block-$start_block_id-$end_block_id
 done
