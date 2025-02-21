@@ -16,6 +16,9 @@ type PairInfo struct {
 }
 
 func ProcessLog1(inputFile string, distance int) error {
+
+	fmt.Printf("Processing %s, distance=%d\n", inputFile, distance)
+
 	// Open the input log file
 	file, err := os.Open(inputFile)
 	if err != nil {
@@ -39,7 +42,7 @@ func ProcessLog1(inputFile string, distance int) error {
 
 	logname := strings.ReplaceAll(inputFile, "/", "")
 	outputPathPrefix := "/mnt/sn640/"
-	outputFileName := fmt.Sprintf("%s-rawFreq-Dist%d-%s.log", outputPathPrefix, distance, logname)
+	outputFileName := fmt.Sprintf("%srawFreq-Dist%d-%s.log", outputPathPrefix, distance, logname)
 	outputFile, err = os.Create(outputFileName)
 	if err != nil {
 		return fmt.Errorf("failed to create output file: %v", err)
@@ -230,6 +233,9 @@ func ProcessLog1(inputFile string, distance int) error {
 }
 
 func ProcessLogBatch(inputFile string, distance int) error {
+
+	fmt.Printf("Processing %s, distance=%d\n", inputFile, distance)
+
 	// Open the input log file
 	file, err := os.Open(inputFile)
 	if err != nil {
@@ -251,14 +257,14 @@ func ProcessLogBatch(inputFile string, distance int) error {
 		outputFile.Close()
 	}
 
-	logname := strings.ReplaceAll(inputFile, "/", "")
-	outputPathPrefix := "/mnt/sn640/"
-	outputFileName := fmt.Sprintf("%s-rawFreq-Dist%d-%s.log", outputPathPrefix, distance, logname)
-	outputFile, err = os.Create(outputFileName)
-	if err != nil {
-		return fmt.Errorf("failed to create output file: %v", err)
-	}
-	defer outputFile.Close()
+	// logname := strings.ReplaceAll(inputFile, "/", "")
+	// outputPathPrefix := "/mnt/sn640/"
+	// outputFileName := fmt.Sprintf("%srawFreq-Dist%d-%s.log", outputPathPrefix, distance, logname)
+	// outputFile, err = os.Create(outputFileName)
+	// if err != nil {
+	// 	return fmt.Errorf("failed to create output file: %v", err)
+	// }
+	// defer outputFile.Close()
 
 	// Global frequency map to store results across all blocks
 	globalFrequencyMap := make(map[string]PairInfo)
@@ -375,10 +381,6 @@ func ProcessLogBatch(inputFile string, distance int) error {
 
 		// Check if the line is the end of the block
 		if matches := endRegex.FindStringSubmatch(line); matches != nil {
-			if outputFile == nil {
-				return fmt.Errorf("the raw-freq.log is not open\n")
-			}
-
 			// Verify the block ID matches
 			endBlockID := matches[1]
 			if endBlockID != currentBlockID {
@@ -396,6 +398,20 @@ func ProcessLogBatch(inputFile string, distance int) error {
 			if endIDInt == batchEndIDs[batchIndex] {
 
 				foundStartID = false
+
+				if outputFile != nil {
+					outputFile.Close()
+				}
+			
+				logname := strings.ReplaceAll(inputFile, "/", "")
+				outputPathPrefix := "/mnt/sn640/"
+				outputFileName := fmt.Sprintf("%srawFreq-%d-Dist%d-%s.log", outputPathPrefix, endIDInt, distance, logname)
+				outputFile, err = os.Create(outputFileName)
+				if err != nil {
+					return fmt.Errorf("failed to create output file: %v", err)
+				}
+				defer outputFile.Close()
+
 
 				// meet the batch end, dump current map to log file
 				for pairKey, pairInfo := range globalFrequencyMap {
@@ -488,10 +504,15 @@ func main() {
 	logFile1 := "/home/tinoryj/geth-trace-2025-02-11-19-18-38"
 	logFile2 := "/home/tinoryj/geth-trace-2025-02-13-15-33-09"
 
-	distanceParams := []int{0, 1, 4, 16, 256, 1024}
+	distanceParams := []int{1, 4, 16, 256, 1024}
+
+	err := ProcessLogBatch(logFile2, 0)
+	if err != nil {
+		fmt.Println("Error:", err)
+	}
 
 	for _, distance := range distanceParams {
-		err := ProcessLog1(logFile1, distance)
+		err = ProcessLog1(logFile1, distance)
 		if err != nil {
 			fmt.Println("Error:", err)
 		}
@@ -501,5 +522,4 @@ func main() {
 			fmt.Println("Error:", err)
 		}
 	}
-
 }
