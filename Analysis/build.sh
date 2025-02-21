@@ -22,8 +22,7 @@ fi
 
 go build -o db_stats_leveldb analysisKVPrefixLeveldb.go
 go build -o db_stats_pebble analysisKVPrefixPebble.go
-go build -o op_stats_prefix_count analysisKVOpDistribution.go
-# g++ -std=c++17 -o op_stats_prefix_distribution countOpDistribution.cpp
-go build -o countOpDistribution countOpDistribution.go
+go build -o countOpDistribution analysisOpDistributionByBatch.go
+go build -o mergeOpCount analysisOpDistributionMergeBatch.go
 # for correlation
 go build -o collect_correlation collectCorrelation.go
