@@ -2,15 +2,12 @@ package main
 
 import (
 	"bufio"
-	"container/heap"
 	"encoding/hex"
 	"fmt"
 	"os"
 	"regexp"
 	"strconv"
 	"strings"
-
-	"github.com/tecbot/gorocksdb"
 )
 
 // PairInfo stores the frequency and the list of BlockIDs where the pair appears
@@ -19,169 +16,100 @@ type PairInfo struct {
 	BlockIDs  string // BlockIDs are stored as a semicolon-separated string
 }
 
-// RocksDBWrapper is a wrapper for RocksDB operations
-type RocksDBWrapper struct {
-	db *gorocksdb.DB
-}
+// MergeLogFiles merges frequency information from 4 log files into a global map and writes the results to an output file
+func MergeLogFiles(logFiles []string, outputFile string) error {
+	// Global map to store merged frequency information
+	globalMap := make(map[string]PairInfo)
 
-// NewRocksDBWrapper initializes a new RocksDB instance
-func NewRocksDBWrapper(dbPath string) (*RocksDBWrapper, error) {
-	opts := gorocksdb.NewDefaultOptions()
-	opts.SetCreateIfMissing(true)
-	db, err := gorocksdb.OpenDb(opts, dbPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open RocksDB: %v", err)
-	}
-	return &RocksDBWrapper{db: db}, nil
-}
+	// Regex to extract key pairs, frequency, and BlockIDs
+	re := regexp.MustCompile(`key: ([a-fA-F0-9]+-[0-9]+);([a-fA-F0-9]+-[0-9]+); Freq: (\d+); Blocks: ([0-9;]+)`)
 
-// Close closes the RocksDB instance
-func (r *RocksDBWrapper) Close() {
-	r.db.Close()
-}
-
-// UpdatePair updates the frequency and BlockIDs for a pair in RocksDB
-func (r *RocksDBWrapper) UpdatePair(pairKey string, frequency int, blockIDs string) error {
-	// Read the existing pair info from RocksDB
-	readOpts := gorocksdb.NewDefaultReadOptions()
-	slice, err := r.db.Get(readOpts, []byte(pairKey))
-	if err != nil {
-		return fmt.Errorf("failed to read from RocksDB: %v", err)
-	}
-	defer slice.Free()
-
-	var existingPairInfo PairInfo
-	if slice.Exists() {
-		// Parse the existing pair info
-		parts := strings.Split(string(slice.Data()), ";")
-		if len(parts) != 2 {
-			return fmt.Errorf("invalid pair info format in RocksDB")
-		}
-		freq, err := strconv.Atoi(parts[0])
+	for _, logFile := range logFiles {
+		// Open the log file
+		file, err := os.Open(logFile)
 		if err != nil {
-			return fmt.Errorf("failed to parse frequency: %v", err)
+			return fmt.Errorf("failed to open log file %s: %v", logFile, err)
 		}
-		existingPairInfo = PairInfo{
-			Frequency: freq,
-			BlockIDs:  parts[1],
-		}
-	}
+		defer file.Close()
 
-	// Update the frequency and BlockIDs
-	existingPairInfo.Frequency += frequency
-	if !strings.Contains(existingPairInfo.BlockIDs, blockIDs) {
-		existingPairInfo.BlockIDs += ";" + blockIDs
-	}
+		// Read the file line by line
+		scanner := bufio.NewScanner(file)
+		for scanner.Scan() {
+			line := scanner.Text()
 
-	// Write the updated pair info back to RocksDB
-	writeOpts := gorocksdb.NewDefaultWriteOptions()
-	value := fmt.Sprintf("%d;%s", existingPairInfo.Frequency, existingPairInfo.BlockIDs)
-	err = r.db.Put(writeOpts, []byte(pairKey), []byte(value))
-	if err != nil {
-		return fmt.Errorf("failed to write to RocksDB: %v", err)
-	}
+			// Parse the line using the regex
+			matches := re.FindStringSubmatch(line)
+			if len(matches) != 5 {
+				return fmt.Errorf("invalid log format: %s", line)
+			}
 
-	return nil
-}
+			// Extract key pair, frequency, and BlockIDs
+			keyPair := fmt.Sprintf("%s;%s", matches[1], matches[2])
+			frequency, err := strconv.Atoi(matches[3])
+			if err != nil {
+				return fmt.Errorf("failed to parse frequency: %v", err)
+			}
+			blockIDs := matches[4]
 
-// ProcessLogFile processes a log file and updates the results in RocksDB
-func ProcessLogFile(logFile string, rocksDB *RocksDBWrapper) error {
-	file, err := os.Open(logFile)
-	if err != nil {
-		return fmt.Errorf("failed to open log file: %v", err)
-	}
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := scanner.Text()
-		parts := strings.Split(line, ";")
-		if len(parts) < 3 {
-			return fmt.Errorf("invalid log format: %s", line)
-		}
-
-		pairKey := parts[0]
-		freqPart := strings.TrimSpace(strings.Split(parts[1], ":")[1])
-		frequency, err := strconv.Atoi(freqPart)
-		if err != nil {
-			return fmt.Errorf("failed to parse frequency: %v", err)
+			// Update the global map
+			if existingPairInfo, exists := globalMap[keyPair]; exists {
+				// If the key pair already exists, update the frequency and BlockIDs
+				existingPairInfo.Frequency += frequency
+				if !strings.Contains(existingPairInfo.BlockIDs, blockIDs) {
+					existingPairInfo.BlockIDs += ";" + blockIDs
+				}
+				globalMap[keyPair] = existingPairInfo
+			} else {
+				// If the key pair does not exist, create a new entry
+				globalMap[keyPair] = PairInfo{
+					Frequency: frequency,
+					BlockIDs:  blockIDs,
+				}
+			}
 		}
 
-		blockIDs := strings.TrimSpace(strings.Split(parts[2], ":")[1])
-
-		// Update the pair in RocksDB
-		err = rocksDB.UpdatePair(pairKey, frequency, blockIDs)
-		if err != nil {
-			return fmt.Errorf("failed to update pair in RocksDB: %v", err)
+		// Check for errors during scanning
+		if err := scanner.Err(); err != nil {
+			return fmt.Errorf("error reading log file %s: %v", logFile, err)
 		}
 	}
 
-	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("error reading log file: %v", err)
-	}
-
-	return nil
-}
-
-// WriteSortedResults writes the sorted results from RocksDB to the final log file
-func WriteSortedResults(rocksDB *RocksDBWrapper, outputFile string) error {
-	// Open the output file
-	file, err := os.Create(outputFile)
+	// Write the merged results to the output file
+	output, err := os.Create(outputFile)
 	if err != nil {
 		return fmt.Errorf("failed to create output file: %v", err)
 	}
-	defer file.Close()
+	defer output.Close()
 
-	// Use a min-heap to sort the results by frequency
-	type HeapItem struct {
-		PairKey  string
-		PairInfo PairInfo
-	}
-	minHeap := &MinHeap{}
-	heap.Init(minHeap)
-
-	// Iterate over all pairs in RocksDB
-	readOpts := gorocksdb.NewDefaultReadOptions()
-	it := rocksDB.db.NewIterator(readOpts)
-	defer it.Close()
-
-	for it.SeekToFirst(); it.Valid(); it.Next() {
-		pairKey := string(it.Key().Data())
-		value := string(it.Value().Data())
-
-		parts := strings.Split(value, ";")
-		if len(parts) != 2 {
-			return fmt.Errorf("invalid pair info format in RocksDB")
-		}
-
-		frequency, err := strconv.Atoi(parts[0])
-		if err != nil {
-			return fmt.Errorf("failed to parse frequency: %v", err)
-		}
-
-		blockIDs := parts[1]
-
-		heapItem := HeapItem{
-			PairKey: pairKey,
-			PairInfo: PairInfo{
-				Frequency: frequency,
-				BlockIDs:  blockIDs,
-			},
-		}
-
-		heap.Push(minHeap, heapItem)
-	}
-
-	// Write the sorted results to the output file
-	for minHeap.Len() > 0 {
-		heapItem := heap.Pop(minHeap).(HeapItem)
-		_, err := file.WriteString(fmt.Sprintf("%s; Freq: %d; Blocks: %s\n", heapItem.PairKey, heapItem.PairInfo.Frequency, heapItem.PairInfo.BlockIDs))
+	for keyPair, pairInfo := range globalMap {
+		_, err := output.WriteString(fmt.Sprintf("key: %s; Freq: %d; Blocks: %s\n", keyPair, pairInfo.Frequency, pairInfo.BlockIDs))
 		if err != nil {
 			return fmt.Errorf("failed to write to output file: %v", err)
 		}
 	}
 
+	fmt.Printf("Merged results written to %s\n", outputFile)
 	return nil
+}
+
+func main() {
+	// List of log files to merge
+	logFiles := []string{
+		"log1.txt",
+		"log2.txt",
+		"log3.txt",
+		"log4.txt",
+	}
+
+	// Output file to write the merged results
+	outputFile := "merged_log.txt"
+
+	// Merge the log files and write the results to the output file
+	err := MergeLogFiles(logFiles, outputFile)
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
 }
 
 // PrefixCategory represents a prefix and its corresponding category name
@@ -326,35 +254,35 @@ func GetCategoryFrequency(logLines []string) (map[string]int, error) {
 	return categoryFrequencyMap, nil
 }
 
-func main() {
-	// Initialize RocksDB
-	rocksDB, err := NewRocksDBWrapper("rocksdb-data")
-	if err != nil {
-		fmt.Println("Error:", err)
-		return
-	}
-	defer rocksDB.Close()
+// func main() {
+// 	// Initialize RocksDB
+// 	rocksDB, err := NewRocksDBWrapper("rocksdb-data")
+// 	if err != nil {
+// 		fmt.Println("Error:", err)
+// 		return
+// 	}
+// 	defer rocksDB.Close()
 
-	// Process Log1
-	err = ProcessLogFile("Log1", rocksDB)
-	if err != nil {
-		fmt.Println("Error processing Log1:", err)
-		return
-	}
+// 	// Process Log1
+// 	err = ProcessLogFile("Log1", rocksDB)
+// 	if err != nil {
+// 		fmt.Println("Error processing Log1:", err)
+// 		return
+// 	}
 
-	// Process Log2
-	err = ProcessLogFile("Log2", rocksDB)
-	if err != nil {
-		fmt.Println("Error processing Log2:", err)
-		return
-	}
+// 	// Process Log2
+// 	err = ProcessLogFile("Log2", rocksDB)
+// 	if err != nil {
+// 		fmt.Println("Error processing Log2:", err)
+// 		return
+// 	}
 
-	// Write the sorted final results to the output file
-	err = WriteSortedResults(rocksDB, "final-log.log")
-	if err != nil {
-		fmt.Println("Error writing final results:", err)
-		return
-	}
+// 	// Write the sorted final results to the output file
+// 	err = WriteSortedResults(rocksDB, "final-log.log")
+// 	if err != nil {
+// 		fmt.Println("Error writing final results:", err)
+// 		return
+// 	}
 
-	fmt.Println("Final results written to final-log.log")
-}
+// 	fmt.Println("Final results written to final-log.log")
+// }
