@@ -4,6 +4,7 @@ op_stats_*
 db_correlation
 collect_correlation
 countOpDistribution
+mergeOpCount
 *.txt
 *.png
 go.mod
