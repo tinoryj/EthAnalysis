@@ -21,7 +21,7 @@ for category in "${categorySet[@]}"; do
             continue
         fi
         cat $currentLogFileName
-        ./mergeOpCount "$currentLogFileName" "$category" "$opType"
+        ./mergeOpDist "$currentLogFileName" "$category" "$opType"
         rm $currentLogFileName
     done
 done
