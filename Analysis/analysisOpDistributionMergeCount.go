@@ -10,7 +10,7 @@ import (
 
 func main() {
 	// Sample file list (replace with actual file paths)
-	files := []string{"countKVDis-0-block-20500000-20600000/countKVDis.txt", "countKVDis-1-block-20600000-20700000/countKVDis.txt", "countKVDis-2-block-20700000-20800000/countKVDis.txt", "countKVDis-3-block-20700000-20800000/countKVDis.txt", "countKVDis-4-block-20800000-20900000/countKVDis.txt", "countKVDis-5-block-20900000-21000000/countKVDis.txt", "countKVDis-6-block-21000000-21100000/countKVDis.txt", "countKVDis-7-block-21100000-21200000/countKVDis.txt", "countKVDis-8-block-21200000-21300000/countKVDis.txt", "countKVDis-9-block-21300000-21400000/countKVDis.txt"}
+	files := []string{"countKVDis-0-block-20500000-20600000/countKVDis.txt", "countKVDis-1-block-20600000-20700000/countKVDis.txt", "countKVDis-2-block-20700000-20800000/countKVDis.txt", "countKVDis-3-block-20700000-20800000/countKVDis.txt", "countKVDis-4-block-20800000-20900000/countKVDis.txt", "countKVDis-5-block-20900000-21000000/countKVDis.txt", "countKVDis-6-block-21000000-21100000/countKVDis.txt", "countKVDis-7-block-21100000-21200000/countKVDis.txt", "countKVDis-8-block-21200000-21300000/countKVDis.txt", "countKVDis-9-block-21300000-21400000/countKVDis.txt", "countKVDis-10-block-21400000-21500000/countKVDis.txt"}
 
 	// A map to store the aggregated counts: category -> opType -> count
 	aggregatedData := make(map[string]map[string]uint64)

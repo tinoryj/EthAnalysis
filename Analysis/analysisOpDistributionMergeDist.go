@@ -212,15 +212,15 @@ func processLogFile(filePath, category, opType string) {
 		dist := opDistribution[category]
 		switch opType {
 		case "get":
-			dist.GetOpDistributionCount[key]++
+			dist.GetOpDistributionCount[key] += int(count)
 		case "batchput":
-			dist.UpdateOpDistributionCount[key]++
+			dist.UpdateOpDistributionCount[key] += int(count)
 		case "put":
-			dist.UpdateNotBatchOpDistributionCount[key]++
+			dist.UpdateNotBatchOpDistributionCount[key] += int(count)
 		case "delete":
-			dist.DeleteOpDistributionCount[key]++
+			dist.DeleteOpDistributionCount[key] += int(count)
 		case "scan":
-			dist.ScanOpDistributionCountRange[key]++
+			dist.ScanOpDistributionCountRange[key] += int(count)
 		}
 	}
 	fmt.Printf("\rProcessed a total of %d lines.\n", lineCount)
@@ -255,9 +255,14 @@ func printDistributionStats(opMap map[string]int, category, opType string) {
 	}
 	defer file.Close()
 
-	_, _ = file.WriteString("ID\tCount\n")
+	// _, _ = file.WriteString("ID\tCount\n")
+	// for id, entry := range sortedOps {
+	// 	_, _ = file.WriteString(fmt.Sprintf("%d\t%d\n", id+1, entry.Count))
+	// }
+
+	_, _ = file.WriteString("ID\tKey\tCount\n")
 	for id, entry := range sortedOps {
-		_, _ = file.WriteString(fmt.Sprintf("%d\t%d\n", id+1, entry.Count))
+		_, _ = file.WriteString(fmt.Sprintf("%d\t%s\t%d\n", id+1, entry.Key, entry.Count))
 	}
 }
 
