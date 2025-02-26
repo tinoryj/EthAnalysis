@@ -247,18 +247,25 @@ func printDistributionStats(opMap map[string]int, category, opType string) {
 	} else {
 		fmt.Println(len(sortedOps), " Operations found for category:", category, "opType:", opType)
 	}
-	fileName := category + "_" + opType + "_dis.txt"
+	fileName := category + "_" + opType + "_with_key_dis.txt"
+	fileNameWithoutKey := category + "_" + opType + "_without_key_dis.txt"
 	file, err := os.Create(fileName)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error creating output file: %s\n", fileName)
+		fmt.Fprintf(os.Stderr, "Error creating output file (with key): %s\n", fileName)
 		return
 	}
 	defer file.Close()
+	fileWithoutKey, err := os.Create(fileNameWithoutKey)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating output file (without key): %s\n", fileNameWithoutKey)
+		return
+	}
+	defer fileWithoutKey.Close()
 
-	// _, _ = file.WriteString("ID\tCount\n")
-	// for id, entry := range sortedOps {
-	// 	_, _ = file.WriteString(fmt.Sprintf("%d\t%d\n", id+1, entry.Count))
-	// }
+	_, _ = fileWithoutKey.WriteString("ID\tCount\n")
+	for id, entry := range sortedOps {
+		_, _ = fileWithoutKey.WriteString(fmt.Sprintf("%d\t%d\n", id+1, entry.Count))
+	}
 
 	_, _ = file.WriteString("ID\tKey\tCount\n")
 	for id, entry := range sortedOps {
