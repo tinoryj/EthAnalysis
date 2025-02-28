@@ -27,3 +27,4 @@ go build -o mergeOpDist analysisOpDistributionMergeDist.go
 go build -o mergeOpTotal analysisOpDistributionMergeCount.go
 # for correlation
 go build -o collect_correlation collectCorrelation.go
+go build -o removeEndData removeEndData.go
