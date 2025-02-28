@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -92,7 +93,98 @@ func MergeLogFiles(logFiles []string, outputFile string) error {
 	return nil
 }
 
+// LogEntry represents a single log entry with its frequency and the original line
+type LogEntry struct {
+	Frequency int
+	Line      string
+}
+
+// ParseLogLine extracts the frequency from a log line
+func ParseLogLine(line string) (int, error) {
+	// Regex to extract the frequency
+	re := regexp.MustCompile(`Freq: (\d+)`)
+	matches := re.FindStringSubmatch(line)
+	if len(matches) < 2 {
+		return 0, fmt.Errorf("failed to parse frequency from line: %s", line)
+	}
+
+	// Convert frequency to integer
+	frequency, err := strconv.Atoi(matches[1])
+	if err != nil {
+		return 0, fmt.Errorf("failed to convert frequency to integer: %v", err)
+	}
+
+	return frequency, nil
+}
+
+// SortLogFile sorts the log entries by frequency in descending order, writes the sorted results to a log file, and returns the total frequency
+func SortLogFile(inputFile, outputFile string) (int, error) {
+	// Open the input log file
+	file, err := os.Open(inputFile)
+	if err != nil {
+		return 0, fmt.Errorf("failed to open input file: %v", err)
+	}
+	defer file.Close()
+
+	// Create a buffered reader
+	reader := bufio.NewReader(file)
+
+	// Read the file line by line
+	var entries []LogEntry
+	var totalFrequency int
+	for {
+		// Read until the next newline character
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			// If we reach the end of the file, break the loop
+			break
+		}
+
+		// Remove the trailing newline character
+		line = strings.TrimSuffix(line, "\n")
+
+		// Parse the frequency from the line
+		frequency, err := ParseLogLine(line)
+		if err != nil {
+			return 0, fmt.Errorf("error parsing log line: %v", err)
+		}
+
+		// Accumulate the total frequency
+		totalFrequency += frequency
+
+		// Store the entry with its frequency
+		entries = append(entries, LogEntry{
+			Frequency: frequency,
+			Line:      line,
+		})
+	}
+
+	// Sort the entries by frequency in descending order
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].Frequency > entries[j].Frequency
+	})
+
+	// Write the sorted entries to the output file
+	output, err := os.Create(outputFile)
+	if err != nil {
+		return 0, fmt.Errorf("failed to create output file: %v", err)
+	}
+	defer output.Close()
+
+	for _, entry := range entries {
+		_, err := output.WriteString(entry.Line + "\n")
+		if err != nil {
+			return 0, fmt.Errorf("failed to write to output file: %v", err)
+		}
+	}
+
+	fmt.Printf("Sorted log written to %s\n", outputFile)
+	return totalFrequency, nil
+}
+
 func main() {
+	// Step 1: Merge log files
+
 	// List of log files to merge
 	logFiles := []string{
 		"log1.txt",
@@ -102,7 +194,7 @@ func main() {
 	}
 
 	// Output file to write the merged results
-	outputFile := "merged_log.txt"
+	outputFile := "merged_log.log"
 
 	// Merge the log files and write the results to the output file
 	err := MergeLogFiles(logFiles, outputFile)
@@ -110,6 +202,25 @@ func main() {
 		fmt.Println("Error:", err)
 		return
 	}
+
+	// Setp-2: Do sorting for the merged global log
+
+	// Input and output file paths
+	inputFile := "merged_log.log"
+	sortedLogFile := "sorted_output.log"
+
+	// Sort the log file and get the total frequency
+	totalFrequency, err := SortLogFile(inputFile, sortedLogFile)
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+
+	// Step-3: Print the total frequency
+	fmt.Printf("Total frequency: %d\n", totalFrequency)
+
+	// Step-4: Get the category frequency
+
 }
 
 // PrefixCategory represents a prefix and its corresponding category name
@@ -185,7 +296,7 @@ func MatchPrefix(key []byte) string {
 }
 
 // ParseLogLine parses a single log line and returns the OPType and key
-func ParseLogLine(line string) (opType string, key []byte, category string, freq int, err error) {
+func ParseLogLinebyCatergory(line string) (opType string, key []byte, category string, freq int, err error) {
 	// Regex to extract OPType and optionally key
 	// re := regexp.MustCompile(`OPType: (\w+(?: \w+)*)(?: key: ([a-fA-F0-9]+))?, size: \d+|OPType: (\w+(?: \w+)*)$`)
 
@@ -230,12 +341,12 @@ func GetCategoryFrequency(logLines []string) (map[string]int, error) {
 
 	for _, line := range logLines {
 		// Parse the log line to extract the keys and their categories
-		_, key1, category1, freq1, err := ParseLogLine(line)
+		_, key1, category1, freq1, err := ParseLogLinebyCatergory(line)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse log line: %v", err)
 		}
 
-		_, key2, category2, freq2, err := ParseLogLine(line)
+		_, key2, category2, freq2, err := ParseLogLinebyCatergory(line)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse log line: %v", err)
 		}
@@ -253,36 +364,3 @@ func GetCategoryFrequency(logLines []string) (map[string]int, error) {
 
 	return categoryFrequencyMap, nil
 }
-
-// func main() {
-// 	// Initialize RocksDB
-// 	rocksDB, err := NewRocksDBWrapper("rocksdb-data")
-// 	if err != nil {
-// 		fmt.Println("Error:", err)
-// 		return
-// 	}
-// 	defer rocksDB.Close()
-
-// 	// Process Log1
-// 	err = ProcessLogFile("Log1", rocksDB)
-// 	if err != nil {
-// 		fmt.Println("Error processing Log1:", err)
-// 		return
-// 	}
-
-// 	// Process Log2
-// 	err = ProcessLogFile("Log2", rocksDB)
-// 	if err != nil {
-// 		fmt.Println("Error processing Log2:", err)
-// 		return
-// 	}
-
-// 	// Write the sorted final results to the output file
-// 	err = WriteSortedResults(rocksDB, "final-log.log")
-// 	if err != nil {
-// 		fmt.Println("Error writing final results:", err)
-// 		return
-// 	}
-
-// 	fmt.Println("Final results written to final-log.log")
-// }
