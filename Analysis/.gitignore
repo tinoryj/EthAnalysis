@@ -3,6 +3,7 @@ db_stats
 op_stats_*
 db_correlation
 collect_correlation
+pearson
 countOpDistribution
 removeEndData
 mergeOp*
