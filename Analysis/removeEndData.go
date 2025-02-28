@@ -35,6 +35,9 @@ func processLogFile(filePath, outputPath string) {
 			return
 		}
 		lineCount++
+		if (lineCount % 1000) == 0 {
+			fmt.Printf("\rProcessed a total of %d lines.", lineCount)
+		}
 		if strings.Contains(line, "Processing block (end), ID: 21385047") {
 			break
 		}else {
