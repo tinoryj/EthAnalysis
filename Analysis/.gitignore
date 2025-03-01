@@ -5,6 +5,7 @@ db_correlation
 collect_correlation
 pearson
 countOpDistribution
+countOpDistributionSingle
 removeEndData
 mergeOp*
 *.txt
