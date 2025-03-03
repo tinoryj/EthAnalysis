@@ -205,27 +205,30 @@ func SortLogFile(inputFile, outputFile string) (int, error) {
 func main() {
 	// Step 1: Merge log files
 
-	// List of log files to merge
-	// logFiles := []string{
-	// 	"/mnt/16T/rawFreq-Dist256-homejzhaogeth-trace-2025-02-11-19-18-38.log", // to be fixed
-	// 	"/mnt/16T/rawFreq-20884721-Dist256-mnt16Tgeth-trace-2025-02-13-15-33-09.log",
-	// 	"/mnt/16T/rawFreq-21009721-Dist256-mnt16Tgeth-trace-2025-02-13-15-33-09.log",
-	// 	"/mnt/16T/rawFreq-21134723-Dist256-mnt16Tgeth-trace-2025-02-13-15-33-09.log",
-	// 	"/mnt/16T/rawFreq-21259722-Dist256-mnt16Tgeth-trace-2025-02-13-15-33-09.log",
-	// 	"/mnt/16T/rawFreq-21379861-Dist256-mnt16Tgeth-trace-2025-02-13-15-33-09.log",
-	// 	"/mnt/16T/rawFreq-21500000-Dist256-mnt16Tgeth-trace-2025-02-13-15-33-09.log",
-	// }
+	distance := 256
 
+	// List of log files to merge
 	logFiles := []string{
-		"tst-merge-sort",
-		"tst-merge-sort2",
+		"/mnt/16T/rawFreq-20599999-Dist256-homejzhaogeth-trace-2025-02-11-19-18-38.log",
+		"/mnt/16T/rawFreq-20759721-Dist256-homejzhaogeth-trace-2025-02-11-19-18-38.log",
+		"/mnt/16T/rawFreq-20884721-Dist256-mnt16Tgeth-trace-2025-02-13-15-33-09.log",
+		"/mnt/16T/rawFreq-21009721-Dist256-mnt16Tgeth-trace-2025-02-13-15-33-09.log",
+		"/mnt/16T/rawFreq-21134723-Dist256-mnt16Tgeth-trace-2025-02-13-15-33-09.log",
+		"/mnt/16T/rawFreq-21259722-Dist256-mnt16Tgeth-trace-2025-02-13-15-33-09.log",
+		"/mnt/16T/rawFreq-21379861-Dist256-mnt16Tgeth-trace-2025-02-13-15-33-09.log",
+		"/mnt/16T/rawFreq-21500000-Dist256-mnt16Tgeth-trace-2025-02-13-15-33-09.log",
 	}
 
+	// logFiles := []string{
+	// 	"tst-merge-sort",
+	// 	"tst-merge-sort2",
+	// }
+
 	// Output file to write the merged results
-	outputFile := "merged_log.log"
+	mergedFile := fmt.Sprintf("freq-merged-%d.log", distance)
 
 	// Merge the log files and write the results to the output file
-	err := MergeLogFiles(logFiles, outputFile)
+	err := MergeLogFiles(logFiles, mergedFile)
 	if err != nil {
 		fmt.Println("Error:", err)
 		return
@@ -234,24 +237,23 @@ func main() {
 	// Setp-2: Do sorting for the merged global log
 
 	// Input and output file paths
-	inputFile := "merged_log.log"
-	sortedLogFile := "sorted_output.log"
-	categoryFreqFile := "category_freq.log"
+	sortedLogFile := fmt.Sprintf("freq-sorted-%d.log", distance)
+	categoryFreqFile := fmt.Sprintf("freq-category-%d.log", distance)
 
 	// Sort the log file and get the total frequency
-	totalFrequency, err := SortLogFile(inputFile, sortedLogFile)
+	totalFrequency, err := SortLogFile(mergedFile, sortedLogFile)
 	if err != nil {
 		fmt.Println("Error:", err)
 		return
 	}
 
 	// Remove the merged log file after sorting
-	err = os.Remove(inputFile)
+	err = os.Remove(mergedFile)
 	if err != nil {
 		fmt.Println("Error:", err)
 		return
 	}
-	fmt.Printf("Merged log file %s has been removed.\n", inputFile)
+	fmt.Printf("Merged log file %s has been removed.\n", mergedFile)
 
 	// Step-3: Print the total frequency
 	fmt.Printf("Total frequency: %d\n", totalFrequency)
