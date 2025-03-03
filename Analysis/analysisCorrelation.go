@@ -2,8 +2,8 @@ package main
 
 import (
 	"bufio"
-	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"regexp"
 	"sort"
@@ -11,16 +11,16 @@ import (
 	"strings"
 )
 
-// PairInfo stores the frequency and the list of BlockIDs where the pair appears
 type PairInfo struct {
 	Frequency int
-	BlockIDs  string // BlockIDs are stored as a semicolon-separated string
+	BlockIDs  string // Store block IDs as a single concatenated string
 }
 
-// MergeLogFiles merges frequency information from 4 log files into a global map and writes the results to an output file
 func MergeLogFiles(logFiles []string, outputFile string) error {
-	// Global map to store merged frequency information
+	// Global map to store merged frequency and block information for key pairs
 	globalMap := make(map[string]PairInfo)
+
+	lineCount := 0
 
 	// Regex to extract key pairs, frequency, and BlockIDs
 	re := regexp.MustCompile(`key: ([a-fA-F0-9]+-[0-9]+);([a-fA-F0-9]+-[0-9]+); Freq: (\d+); Blocks: ([0-9;]+)`)
@@ -33,10 +33,25 @@ func MergeLogFiles(logFiles []string, outputFile string) error {
 		}
 		defer file.Close()
 
+		// Create a buffered reader
+		reader := bufio.NewReader(file)
+
 		// Read the file line by line
-		scanner := bufio.NewScanner(file)
-		for scanner.Scan() {
-			line := scanner.Text()
+		for {
+			line, err := reader.ReadString('\n')
+			if err != nil {
+				if err == io.EOF {
+					break // End of file reached
+				}
+				return fmt.Errorf("error reading log file %s: %v", logFile, err)
+			}
+
+			line = strings.TrimSpace(line) // Remove any trailing newline or spaces
+			lineCount++
+
+			if lineCount%10000 == 0 {
+				fmt.Printf("\rProcessed %d lines", lineCount)
+			}
 
 			// Parse the line using the regex
 			matches := re.FindStringSubmatch(line)
@@ -45,33 +60,37 @@ func MergeLogFiles(logFiles []string, outputFile string) error {
 			}
 
 			// Extract key pair, frequency, and BlockIDs
-			keyPair := fmt.Sprintf("%s;%s", matches[1], matches[2])
+			key1 := matches[1]
+			key2 := matches[2]
 			frequency, err := strconv.Atoi(matches[3])
 			if err != nil {
 				return fmt.Errorf("failed to parse frequency: %v", err)
 			}
-			blockIDs := matches[4]
+			blockIDs := matches[4] // Extract block IDs as a single string
+
+			// Ensure key pairs are order-independent (e.g., key1;key2 is the same as key2;key1)
+			keyPair := fmt.Sprintf("%s;%s", key1, key2)
+			if key1 > key2 {
+				keyPair = fmt.Sprintf("%s;%s", key2, key1)
+			}
 
 			// Update the global map
 			if existingPairInfo, exists := globalMap[keyPair]; exists {
-				// If the key pair already exists, update the frequency and BlockIDs
+				// Increment frequency
 				existingPairInfo.Frequency += frequency
-				if !strings.Contains(existingPairInfo.BlockIDs, blockIDs) {
-					existingPairInfo.BlockIDs += ";" + blockIDs
-				}
+
+				// Append block IDs, separated by a semicolon
+				existingPairInfo.BlockIDs += ";" + blockIDs
+
+				// Update the map
 				globalMap[keyPair] = existingPairInfo
 			} else {
-				// If the key pair does not exist, create a new entry
+				// Create a new entry
 				globalMap[keyPair] = PairInfo{
 					Frequency: frequency,
 					BlockIDs:  blockIDs,
 				}
 			}
-		}
-
-		// Check for errors during scanning
-		if err := scanner.Err(); err != nil {
-			return fmt.Errorf("error reading log file %s: %v", logFile, err)
 		}
 	}
 
@@ -83,13 +102,14 @@ func MergeLogFiles(logFiles []string, outputFile string) error {
 	defer output.Close()
 
 	for keyPair, pairInfo := range globalMap {
+		// Write to the output file
 		_, err := output.WriteString(fmt.Sprintf("key: %s; Freq: %d; Blocks: %s\n", keyPair, pairInfo.Frequency, pairInfo.BlockIDs))
 		if err != nil {
 			return fmt.Errorf("failed to write to output file: %v", err)
 		}
 	}
 
-	fmt.Printf("Merged results written to %s\n", outputFile)
+	fmt.Printf("\nMerged results written to %s\n", outputFile)
 	return nil
 }
 
@@ -186,11 +206,19 @@ func main() {
 	// Step 1: Merge log files
 
 	// List of log files to merge
+	// logFiles := []string{
+	// 	"/mnt/16T/rawFreq-Dist256-homejzhaogeth-trace-2025-02-11-19-18-38.log", // to be fixed
+	// 	"/mnt/16T/rawFreq-20884721-Dist256-mnt16Tgeth-trace-2025-02-13-15-33-09.log",
+	// 	"/mnt/16T/rawFreq-21009721-Dist256-mnt16Tgeth-trace-2025-02-13-15-33-09.log",
+	// 	"/mnt/16T/rawFreq-21134723-Dist256-mnt16Tgeth-trace-2025-02-13-15-33-09.log",
+	// 	"/mnt/16T/rawFreq-21259722-Dist256-mnt16Tgeth-trace-2025-02-13-15-33-09.log",
+	// 	"/mnt/16T/rawFreq-21379861-Dist256-mnt16Tgeth-trace-2025-02-13-15-33-09.log",
+	// 	"/mnt/16T/rawFreq-21500000-Dist256-mnt16Tgeth-trace-2025-02-13-15-33-09.log",
+	// }
+
 	logFiles := []string{
-		"log1.txt",
-		"log2.txt",
-		"log3.txt",
-		"log4.txt",
+		"tst-merge-sort",
+		"tst-merge-sort2",
 	}
 
 	// Output file to write the merged results
@@ -208,6 +236,7 @@ func main() {
 	// Input and output file paths
 	inputFile := "merged_log.log"
 	sortedLogFile := "sorted_output.log"
+	categoryFreqFile := "category_freq.log"
 
 	// Sort the log file and get the total frequency
 	totalFrequency, err := SortLogFile(inputFile, sortedLogFile)
@@ -220,135 +249,145 @@ func main() {
 	fmt.Printf("Total frequency: %d\n", totalFrequency)
 
 	// Step-4: Get the category frequency
+	err = GetCategoryFrequency(sortedLogFile, categoryFreqFile)
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
 
 }
 
 // PrefixCategory represents a prefix and its corresponding category name
 type PrefixCategory struct {
-	Prefix   []byte
+	Prefix   string
 	Category string
 }
 
 // Define the known prefixes and their categories
-var prefixes = []PrefixCategory{
-	{[]byte("secure-key-"), "PreimagePrefix"},
-	{[]byte("ethereum-config-"), "ConfigPrefix"},
-	{[]byte("ethereum-genesis-"), "GenesisPrefix"},
-	{[]byte("chtRootV2-"), "ChtPrefix"},
-	{[]byte("chtIndexV2-"), "ChtIndexTablePrefix"},
-	{[]byte("fixedRoot-"), "FixedCommitteeRootKey"},
-	{[]byte("committee-"), "SyncCommitteeKey"},
-	{[]byte("SnapSyncStatus"), "SnapSyncStatusFlagKey"},
-	{[]byte("SnapshotSyncStatus"), "SnapshotSyncStatusKey"},
-	{[]byte("SnapshotDisabled"), "SnapshotDisabledKey"},
-	{[]byte("SnapshotRoot"), "SnapshotRootKey"},
-	{[]byte("SnapshotJournal"), "SnapshotJournalKey"},
-	{[]byte("SnapshotGenerator"), "SnapshotGeneratorKey"},
-	{[]byte("SnapshotRecovery"), "SnapshotRecoveryKey"},
-	{[]byte("SkeletonSyncStatus"), "SkeletonSyncStatusKey"},
-	{[]byte("TrieJournal"), "TrieJournalKey"},
-	{[]byte("TransactionIndexTail"), "TxIndexTailKey"},
-	{[]byte("FastTransactionLookupLimit"), "FastTxLookupLimitKey"},
-	{[]byte("InvalidBlock"), "BadBlockKey"},
-	{[]byte("unclean-shutdown"), "UncleanShutdownKey"},
-	{[]byte("eth2-transition"), "TransitionStatusKey"},
-	{[]byte("bltRoot-"), "BloomTriePrefix"},
-	{[]byte("bltIndex-"), "BloomTrieIndexPrefix"},
-	{[]byte("blt-"), "BloomTrieTablePrefix"},
-	{[]byte("cht-"), "ChtTablePrefix"},
-	{[]byte("clique-"), "CliqueSnapshotPrefix"},
-	{[]byte("update-"), "BestUpdateKey"},
-	{[]byte("iB"), "BloomBitsIndexPrefix"},
-	{[]byte("h"), "HeaderPrefix"},
-	{[]byte("t"), "HeaderTDSuffix"},
-	{[]byte("n"), "HeaderHashSuffix"},
-	{[]byte("H"), "HeaderNumberPrefix"},
-	{[]byte("b"), "BlockBodyPrefix"},
-	{[]byte("r"), "BlockReceiptsPrefix"},
-	{[]byte("l"), "TxLookupPrefix"},
-	{[]byte("B"), "BloomBitsPrefix"},
-	{[]byte("a"), "SnapshotAccountPrefix"},
-	{[]byte("o"), "SnapshotStoragePrefix"},
-	{[]byte("c"), "CodePrefix"},
-	{[]byte("S"), "SkeletonHeaderPrefix"},
-	{[]byte("A"), "TrieNodeAccountPrefix"},
-	{[]byte("O"), "TrieNodeStoragePrefix"},
-	{[]byte("L"), "StateIDPrefix"},
-	{[]byte("v"), "VerklePrefix"},
-	{[]byte("DatabaseVersion"), "DatabaseVersionKey"},
-	{[]byte("LastHeader"), "HeadHeaderKey"},
-	{[]byte("LastBlock"), "HeadBlockKey"},
-	{[]byte("LastFast"), "HeadFastBlockKey"},
-	{[]byte("LastFinalized"), "HeadFinalizedBlockKey"},
-	{[]byte("LastStateID"), "PersistentStateIDKey"},
-	{[]byte("LastPivot"), "LastPivotKey"},
-	{[]byte("TrieSync"), "FastTrieProgressKey"},
+var hexPrefixes = []PrefixCategory{
+	{"7365637572652d6b65792d", "PreimagePrefix"},
+	{"657468657265756d2d636f6e6669672d", "ConfigPrefix"},
+	{"657468657265756d2d67656e657369732d", "GenesisPrefix"},
+	{"636874526f6f7456322d", "ChtPrefix"},
+	{"636874496e64657856322d", "ChtIndexTablePrefix"},
+	{"6669786564526f6f742d", "FixedCommitteeRootKey"},
+	{"636f6d6d69747465652d", "SyncCommitteeKey"},
+	{"6368742d", "ChtTablePrefix"},
+	{"626c74526f6f742d", "BloomTriePrefix"},
+	{"626c74496e6465782d", "BloomTrieIndexPrefix"},
+	{"626c742d", "BloomTrieTablePrefix"},
+	{"636c697175652d", "CliqueSnapshotPrefix"},
+	{"7570646174652d", "BestUpdateKey"},
+	{"536e617073686f7453796e63537461747573", "SnapshotSyncStatusKey"},
+	{"536e617073686f7444697361626c6564", "SnapshotDisabledKey"},
+	{"536e617073686f74526f6f74", "SnapshotRootKey"},
+	{"536e617073686f744a6f75726e616c", "SnapshotJournalKey"},
+	{"536e617073686f7447656e657261746f72", "SnapshotGeneratorKey"},
+	{"536e617073686f745265636f76657279", "SnapshotRecoveryKey"},
+	{"536b656c65746f6e53796e63537461747573", "SkeletonSyncStatusKey"},
+	{"5472696553796e63", "FastTrieProgressKey"},
+	{"547269654a6f75726e616c", "TrieJournalKey"},
+	{"5472616e73616374696f6e496e6465785461696c", "TxIndexTailKey"},
+	{"466173745472616e73616374696f6e4c6f6f6b75704c696d6974", "FastTxLookupLimitKey"},
+	{"496e76616c6964426c6f636b", "BadBlockKey"},
+	{"756e636c65616e2d73687574646f776e", "UncleanShutdownKey"},
+	{"657468322d7472616e736974696f6e", "TransitionStatusKey"},
+	{"536e617053796e63537461747573", "SnapSyncStatusFlagKey"},
+	{"446174616261736556657273696f6e", "DatabaseVersionKey"},
+	{"4c617374486561646572", "HeadHeaderKey"},
+	{"4c617374426c6f636b", "HeadBlockKey"},
+	{"4c61737446617374", "HeadFastBlockKey"},
+	{"4c61737446696e616c697a6564", "HeadFinalizedBlockKey"},
+	{"4c61737453746174654944", "PersistentStateIDKey"},
+	{"4c6173745069766f74", "LastPivotKey"},
+	{"69", "BloomBitsIndexPrefix"},
+	{"68", "HeaderPrefix"},
+	{"74", "HeaderTDSuffix"},
+	{"6e", "HeaderHashSuffix"},
+	{"48", "HeaderNumberPrefix"},
+	{"62", "BlockBodyPrefix"},
+	{"72", "BlockReceiptsPrefix"},
+	{"6c", "TxLookupPrefix"},
+	{"42", "BloomBitsPrefix"},
+	{"61", "SnapshotAccountPrefix"},
+	{"6f", "SnapshotStoragePrefix"},
+	{"63", "CodePrefix"},
+	{"53", "SkeletonHeaderPrefix"},
+	{"41", "TrieNodeAccountPrefix"},
+	{"4f", "TrieNodeStoragePrefix"},
+	{"4c", "StateIDPrefix"},
+	{"76", "VerklePrefix"},
 }
 
-// MatchPrefix determines the category for a given key
-func MatchPrefix(key []byte) string {
-	for _, prefix := range prefixes {
-		if strings.HasPrefix(string(key), string(prefix.Prefix)) {
+func matchPrefix(key string) string {
+	for _, prefix := range hexPrefixes {
+		if strings.HasPrefix(key, prefix.Prefix) {
+			// fmt.Print("Matched prefix: ", prefix.Prefix, " for key: ", key, "\n")
 			return prefix.Category
 		}
 	}
 	return "Unknown"
 }
 
-// ParseLogLine parses a single log line and returns the OPType and key
-func ParseLogLinebyCatergory(line string) (opType string, key []byte, category string, freq int, err error) {
-	// Regex to extract OPType and optionally key
-	// re := regexp.MustCompile(`OPType: (\w+(?: \w+)*)(?: key: ([a-fA-F0-9]+))?, size: \d+|OPType: (\w+(?: \w+)*)$`)
-
-	pattern := `key:\s*([\w\-]+);([\w\-]+);\s*Freq:\s*(\d+);`
-	re := regexp.MustCompile(pattern)
-
+// ParseLineForKeyPairCategories parses a log line containing a key pair and returns the categories of the two keys
+func ParseLineForKeyPairCategories(line string) (string, string, bool) {
+	// Regex to parse the line format
+	re := regexp.MustCompile(`key: ([a-fA-F0-9\-]+);([a-fA-F0-9\-]+); Freq: (\d+); Blocks: ([\d;]+)`)
 	matches := re.FindStringSubmatch(line)
-
-	// // Extract the full key, subkey1, and subkey2
-	// key := matches[1] + ";" + matches[2]
-	// subkey1 := matches[1]
-	// subkey2 := matches[2]
-
-	// Attempt to decode the key
-	key, err = hex.DecodeString(matches[1])
-	if err != nil {
-		return "", nil, "noPrefix", fmt.Errorf("invalid key: %s", matches[1])
+	if matches == nil {
+		return "", "", false
 	}
 
-	key, err = hex.DecodeString(matches[2])
-	if err != nil {
-		return "", nil, "noPrefix", fmt.Errorf("invalid key: %s", matches[2])
-	}
+	// Extract the key pair
+	key1 := matches[1]
+	key2 := matches[2]
 
-	freq, err := strconv.Atoi(matches[3])
-	if err != nil {
-		return 0, fmt.Errorf("failed to parse frequency: %v", err)
-	}
+	// Match the prefixes for the two keys and get their categories
+	category1 := matchPrefix(key1)
+	category2 := matchPrefix(key2)
 
-	// Determine the prefix category
-	category = MatchPrefix(key)
-	if category == "" {
-		category = "noPrefix"
-	}
-
-	return key, category, freq, nil
+	return category1, category2, true
 }
 
-func GetCategoryFrequency(logLines []string) (map[string]int, error) {
+func GetCategoryFrequency(inputFileName string, outputFileName string) error {
 	// Map to store the accumulated frequencies for category pairs
 	categoryFrequencyMap := make(map[string]int)
 
-	for _, line := range logLines {
-		// Parse the log line to extract the keys and their categories
-		_, key1, category1, freq1, err := ParseLogLinebyCatergory(line)
+	// Map to keep track of open file writers for each category pair
+	fileWriters := make(map[string]*os.File)
+	defer func() {
+		// Ensure all files are closed at the end
+		for _, file := range fileWriters {
+			file.Close()
+		}
+	}()
+
+	// Open the input file for reading
+	inputFile, err := os.Open(inputFileName)
+	if err != nil {
+		return fmt.Errorf("failed to open input file: %v", err)
+	}
+	defer inputFile.Close()
+
+	// Create a buffered reader for reading the file line by line
+	reader := bufio.NewReader(inputFile)
+
+	for {
+		// Read a single line
+		line, err := reader.ReadString('\n')
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse log line: %v", err)
+			if err == io.EOF {
+				break // End of file reached
+			}
+			return fmt.Errorf("error reading input file: %v", err)
 		}
 
-		_, key2, category2, freq2, err := ParseLogLinebyCatergory(line)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse log line: %v", err)
+		line = strings.TrimSpace(line) // Remove any trailing newline or spaces
+
+		// Parse the line and extract key pairs and their categories
+		category1, category2, ok := ParseLineForKeyPairCategories(line)
+		if !ok {
+			return fmt.Errorf("failed to parse log line: %s", line)
 		}
 
 		// Create a unique key for the category pair (order-independent)
@@ -357,10 +396,60 @@ func GetCategoryFrequency(logLines []string) (map[string]int, error) {
 			categoryPair = fmt.Sprintf("%s;%s", category2, category1)
 		}
 
+		// Extract the frequency value from the line
+		re := regexp.MustCompile(`Freq: (\d+);`)
+		freqMatch := re.FindStringSubmatch(line)
+		if freqMatch == nil {
+			return fmt.Errorf("failed to extract frequency from log line: %s", line)
+		}
+
+		frequency, err := strconv.Atoi(freqMatch[1])
+		if err != nil {
+			return fmt.Errorf("failed to convert frequency to integer: %v", err)
+		}
+
 		// Update the frequency for the category pair
-		frequency := freq1 + freq2
 		categoryFrequencyMap[categoryPair] += frequency
+
+		// Write the original line to the corresponding category pair file
+		fileName := fmt.Sprintf("%s-%s-freq.log", category1, category2)
+		if category1 > category2 {
+			fileName = fmt.Sprintf("%s-%s-freq.log", category2, category1)
+		}
+
+		// Check if the file writer already exists
+		writer, exists := fileWriters[fileName]
+		if !exists {
+			// Create a new file for this category pair
+			var err error
+			writer, err = os.Create(fileName)
+			if err != nil {
+				return fmt.Errorf("failed to create log file for category pair %s: %v", categoryPair, err)
+			}
+			fileWriters[fileName] = writer
+		}
+
+		// Write the original line to the file
+		_, err = writer.WriteString(line + "\n")
+		if err != nil {
+			return fmt.Errorf("failed to write to log file for category pair %s: %v", categoryPair, err)
+		}
 	}
 
-	return categoryFrequencyMap, nil
+	// Write the frequency map to the output file
+	outputFile, err := os.Create(outputFileName)
+	if err != nil {
+		return fmt.Errorf("failed to create output file: %v", err)
+	}
+	defer outputFile.Close()
+
+	for categoryPair, frequency := range categoryFrequencyMap {
+		_, err := outputFile.WriteString(fmt.Sprintf("%s: %d\n", categoryPair, frequency))
+		if err != nil {
+			return fmt.Errorf("failed to write frequency map to output file: %v", err)
+		}
+	}
+
+	fmt.Printf("Frequency map written to %s\n", outputFileName)
+	return nil
 }
