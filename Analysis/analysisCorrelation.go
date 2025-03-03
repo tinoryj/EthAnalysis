@@ -245,6 +245,14 @@ func main() {
 		return
 	}
 
+	// Remove the merged log file after sorting
+	err = os.Remove(inputFile)
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+	fmt.Printf("Merged log file %s has been removed.\n", inputFile)
+
 	// Step-3: Print the total frequency
 	fmt.Printf("Total frequency: %d\n", totalFrequency)
 
@@ -436,15 +444,35 @@ func GetCategoryFrequency(inputFileName string, outputFileName string) error {
 		}
 	}
 
-	// Write the frequency map to the output file
+	// Write the frequency map to the output file, sorted by frequency in descending order
 	outputFile, err := os.Create(outputFileName)
 	if err != nil {
 		return fmt.Errorf("failed to create output file: %v", err)
 	}
 	defer outputFile.Close()
 
+	// Convert the map to a slice of key-value pairs for sorting
+	type categoryFrequency struct {
+		CategoryPair string
+		Frequency    int
+	}
+
+	var sortedFrequencies []categoryFrequency
 	for categoryPair, frequency := range categoryFrequencyMap {
-		_, err := outputFile.WriteString(fmt.Sprintf("%s: %d\n", categoryPair, frequency))
+		sortedFrequencies = append(sortedFrequencies, categoryFrequency{
+			CategoryPair: categoryPair,
+			Frequency:    frequency,
+		})
+	}
+
+	// Sort the slice by frequency in descending order
+	sort.Slice(sortedFrequencies, func(i, j int) bool {
+		return sortedFrequencies[i].Frequency > sortedFrequencies[j].Frequency
+	})
+
+	// Write the sorted frequencies to the output file
+	for _, entry := range sortedFrequencies {
+		_, err := outputFile.WriteString(fmt.Sprintf("%s: %d\n", entry.CategoryPair, entry.Frequency))
 		if err != nil {
 			return fmt.Errorf("failed to write frequency map to output file: %v", err)
 		}
