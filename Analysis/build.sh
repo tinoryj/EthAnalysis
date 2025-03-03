@@ -23,6 +23,7 @@ fi
 go build -o db_stats_leveldb analysisKVPrefixLeveldb.go
 go build -o db_stats_pebble analysisKVPrefixPebble.go
 go build -o countOpDistribution analysisOpDistributionByBatch.go
+go build -o countOpDistributionSingle analysisOpDistributionByBatchWithSingleFile.go
 go build -o mergeOpDist analysisOpDistributionMergeDist.go
 go build -o mergeOpTotal analysisOpDistributionMergeCount.go
 # for correlation
