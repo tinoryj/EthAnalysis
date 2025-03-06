@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"regexp"
@@ -19,24 +20,11 @@ type PearsonResult struct {
 
 func main() {
 	// Input files
-	inputLogFile := "/home/tinoryj/geth-trace-2025-02-11-19-18-38"
-
-	// // The block number per batch:
-	// // 5 block/min; 300 block/hour; 7200 block/day
-	// blockNumPerBatch := 5
+	// inputLogFile := "/home/jzhao/tst-pearson.log"
+	inputLogFile := "/mnt/16T/geth-trace-withcache-merged-block-20500000-21500000"
 
 	// Process log and compute Pearson coefficients
 	processLogAndCompute(inputLogFile)
-	// processLog1AndCompute(log1File, keys, blockNumPerBatch)
-
-	// // Output results
-	// fmt.Println("Final Accumulated Pearson Coefficients:")
-	// for i, result := range accumulatedResults {
-	// 	fmt.Printf("%s - %s: %.6f\n", result.Key1, result.Key2, result.Coeff)
-	// 	if (i+1)%10 == 0 {
-	// 		fmt.Println()
-	// 	}
-	// }
 }
 
 func processLogAndCompute(logFile string) {
@@ -56,7 +44,7 @@ func processLogAndCompute(logFile string) {
 	var currentBlockID string
 
 	// Open a log file for writing accumulated results
-	outputFileName := fmt.Sprintf("/mnt/sn640/category-pearson.log")
+	outputFileName := fmt.Sprintf("/mnt/16T/withcache-category-pearson.log")
 	outputFile, err := os.Create(outputFileName)
 	if err != nil {
 		fmt.Printf("Error creating log file: %v\n", err)
@@ -78,26 +66,28 @@ func processLogAndCompute(logFile string) {
 	// batchStartIDs := []int{20499866, 20500000}
 	// batchEndIDs := []int{20499999, 20500100}
 	batchStartIDs := []int{20500000}
-	batchEndIDs := []int{20759721}
+	batchEndIDs := []int{21500000}
 	var batchIndex int
 	batchIndex = 0
 
 	// Create accumulators and other necessary variables
-	numPrefixes := len(hexPrefixes)
+	numPrefixes := len(withCacheHexPrefixes)
 	fmt.Printf("Considered prefixes num: %d\n", numPrefixes)
 
-	accumulatedResults := make([]float64, numPrefixes*numPrefixes) // Accumulator for Pearson coefficients
-	prefixIndexMap := make(map[string]int)
-	for i, prefix := range hexPrefixes {
-		prefixIndexMap[prefix] = i
+	// accumulatedResults := make([]float64, numPrefixes*numPrefixes) // Accumulator for Pearson coefficients
+	categoryIndexMap := make(map[string]int)
+	for i, prefix := range withCacheHexPrefixes {
+		categoryIndexMap[prefix.Category] = i
 	}
 	// Variables for per-partition processing
+	// Initialize bitSequences
 	bitSequences := initializeBitSequences(numPrefixes)
-	lineIndex := 0    // Tracks the "position" (bit index) in the current partition
-	blockCounter := 0 // Tracks the number of blocks processed in the current batch
+	fmt.Printf("Debug: Initialized bitSequences with %d categories\n", numPrefixes)
+
+	// Variables for per-partition processing
+	lineIndex := 0 // Tracks the "position" (bit index) in the current partition
 
 	for {
-
 		// Read the file line by line
 		lineCount++
 
@@ -106,20 +96,18 @@ func processLogAndCompute(logFile string) {
 		}
 
 		line, err := reader.ReadString('\n')
+
 		if err != nil { // End of file
-			break
+			if err == io.EOF && line == "" {
+				break
+			}
 		}
+
 		line = strings.TrimSpace(line)
 
 		// Check if the line is the start of a block
 		if matches := startRegex.FindStringSubmatch(line); matches != nil {
-
-			// fmt.Printf("in start\n")
-
-			// Extract the block ID
 			currentBlockID = matches[1]
-
-			// Convert block ID to integer
 			blockIDInt, err := strconv.Atoi(currentBlockID)
 			if err != nil {
 				blockIDInt = 0
@@ -127,14 +115,10 @@ func processLogAndCompute(logFile string) {
 			}
 
 			tmpBatchIndex := findIndex(blockIDInt, batchStartIDs)
-
 			if tmpBatchIndex != -1 {
 				batchIndex = tmpBatchIndex
 				foundStartID = true
 			}
-
-			// bitSequences = initializeBitSequences(numKeys) // Reset bit sequences for new block
-			// lineIndex = 0                                  // Reset line index
 		}
 
 		// Skip all lines until we have found the line with startID
@@ -144,38 +128,29 @@ func processLogAndCompute(logFile string) {
 
 		// If inside a block, check for "OPType: Get" lines
 		if opGetRegex.MatchString(line) {
-			// fmt.Printf("in get\n")
+			// Debug: Print the line being processed
+			// fmt.Printf("Debug: Processing line: %s\n", line)
 
-			// prepare the bit sequence (vector)
-			processLine(line, keys, keyIndexMap, bitSequences, lineIndex)
+			// Extract key and size from line1
+			matches := opGetRegex.FindStringSubmatch(line)
+			if len(matches) != 3 {
+				fmt.Printf("failed to parse key and size from line: %s", line)
+			}
+			line_key := matches[1]
+
+			// Prepare the bit sequence (vector)
+			processLine(line_key, categoryIndexMap, bitSequences, lineIndex)
 			lineIndex++
+
+			// Debug: Print the updated lineIndex
+			// fmt.Printf("Debug: Updated lineIndex: %d\n", lineIndex)
 		}
 
 		// Check if the line is the end of the block
 		if matches := endRegex.FindStringSubmatch(line); matches != nil {
-			// fmt.Printf("in end\n")
-
-			// Verify the block ID matches
 			endBlockID := matches[1]
 			if endBlockID != currentBlockID {
 				fmt.Printf("block ID mismatch: start ID %s, end ID %s", currentBlockID, endBlockID)
-			}
-
-			blockCounter++
-			if blockCounter == blockNumPerBatch {
-				// Compute Pearson coefficients for the current batch
-				pearsonResults := computePearsonCoefficients(bitSequences, lineIndex)
-
-				// Accumulate results
-				for i := range pearsonResults {
-					r_sequre := pearsonResults[i] * pearsonResults[i]
-					accumulatedResults[i] += r_sequre
-				}
-
-				// Reset for the next batch
-				blockCounter = 0
-				bitSequences = initializeBitSequences(numKeys)
-				lineIndex = 0
 			}
 
 			endIDInt, err := strconv.Atoi(endBlockID)
@@ -183,55 +158,38 @@ func processLogAndCompute(logFile string) {
 				fmt.Println("Error converting end block ID to integer:", err)
 			}
 
-			// fmt.Printf("endIDInt %d\n", endIDInt)
-			// fmt.Printf("batchEndId %d, %d\n", batchEndIDs[batchIndex], batchIndex)
-
 			if endIDInt == batchEndIDs[batchIndex] {
-
 				foundStartID = false
-
-				// Print the final block ID in this batch process
-				if endBlockID != currentBlockID {
-					fmt.Printf("block ID mismatch: start ID %s, end ID %s\n", currentBlockID, endBlockID)
-				} else {
-					fmt.Printf("The final processed block ID in this batch is %s\n", currentBlockID)
-				}
-
-				// Get the current memory usage
-				memoryUsage, err := GetMemoryUsage()
-				if err != nil {
-					fmt.Println("Get memory usage Error:", err)
-				}
-
-				fmt.Printf("Current memory usage: %d bytes (%.2f GiB)\n", memoryUsage, float64(memoryUsage)/1024/1024/1024)
+				fmt.Printf("The final processed block ID in this batch is %s\n", currentBlockID)
 			}
 		}
 	}
 
-	// // Convert accumulated results to PearsonResult format
-	// var results []PearsonResult
-	// for i := 0; i < numKeys; i++ {
-	// 	for j := 0; j < numKeys; j++ {
-	// 		results = append(results, PearsonResult{
-	// 			Key1:  keys[i],
-	// 			Key2:  keys[j],
-	// 			Coeff: accumulatedResults[i*numKeys+j],
-	// 		})
+	// Add debug messages to check bitSequences before computing Pearson coefficients
+	// fmt.Println("Debug: Checking bitSequences before computing Pearson coefficients")
+	// for i := 0; i < numPrefixes; i++ {
+	// 	fmt.Printf("Category: %s, Bit Sequence: ", withCacheHexPrefixes[i].Category)
+	// 	for j := 0; j < lineIndex; j++ {
+	// 		fmt.Printf("%d", getBit(bitSequences[i], j))
 	// 	}
+	// 	fmt.Println()
 	// }
 
-	// Write accumulated results directly to the log file
-	for i := 0; i < numKeys; i++ {
-		for j := 0; j < numKeys; j++ {
-			coeff := accumulatedResults[i*numKeys+j]
-			if coeff != 0 { // Only write non-zero coefficients
-				line := fmt.Sprintf("key1: %s; key2: %s; coeff: %.6f\n", keys[i], keys[j], coeff)
-				_, err := writer.WriteString(line)
-				if err != nil {
-					fmt.Printf("Error writing to log file: %v\n", err)
-					return
-				}
+	// compute the Pearson between categories
+	pearsonResults := computePearsonCoefficients(bitSequences, lineIndex)
+
+	// write the results in log file
+	for i := 0; i < numPrefixes; i++ {
+		for j := 0; j < numPrefixes; j++ {
+			coeff := pearsonResults[i*numPrefixes+j]
+			// if coeff != 0 { // Only write non-zero coefficients
+			line := fmt.Sprintf("category1: %s; category2: %s; coeff: %.6f\n", withCacheHexPrefixes[i], withCacheHexPrefixes[j], coeff)
+			_, err := writer.WriteString(line)
+			if err != nil {
+				fmt.Printf("Error writing to log file: %v\n", err)
+				return
 			}
+			// }
 		}
 	}
 
@@ -242,7 +200,7 @@ func processLogAndCompute(logFile string) {
 		return
 	}
 
-	fmt.Println("Accumulated results written to accumulated_results.log")
+	fmt.Println("Pearson results written to category-pearson.log")
 }
 
 // initializeBitSequences initializes a 2D slice for bit sequences
@@ -254,26 +212,55 @@ func initializeBitSequences(numKeys int) [][]byte {
 	return bitSequences
 }
 
-// processLine updates the bit sequences for the current line
-func processLine(line string, keys []string, keyIndexMap map[string]int, bitSequences [][]byte, lineIndex int) {
+func matchPrefix(key string) string {
+	for _, prefix := range withCacheHexPrefixes {
+		if strings.HasPrefix(key, prefix.Prefix) {
+			fmt.Printf("Debug: Matched prefix: %s for key: %s\n", prefix.Prefix, key)
+			return prefix.Category
+		}
+	}
+	fmt.Printf("Debug: No prefix matched for key: %s\n", key)
+	return "Unknown"
+}
+
+func processLine(line_key string, categoryIndexMap map[string]int, bitSequences [][]byte, lineIndex int) {
 	for i := range bitSequences {
 		ensureBitCapacity(&bitSequences[i], lineIndex)
 	}
 
-	// Parse the line to find keys
-	parts := strings.Split(line, ";")
-	if len(parts) < 2 {
-		return
-	}
-	keyPart := strings.TrimPrefix(parts[0], "key: ")
-	keysInLine := strings.Split(keyPart, ";")
+	// Debug: Print the keys found in the line
+	// fmt.Printf("Debug: Line keys: %v\n", line_key)
 
 	// Set bit for each key that appears in the current line
-	for _, key := range keysInLine {
-		if idx, found := keyIndexMap[key]; found {
-			setBit(&bitSequences[idx], lineIndex)
-		}
+	// for _, key := range line_key {
+	// Match the category
+	category := matchPrefix(line_key)
+
+	// Debug: Print the key and its matched category
+	// fmt.Printf("Debug: Key: %s, Category: %s\n", line_key, category)
+
+	if idx, found := categoryIndexMap[category]; found {
+		// Debug: Print the bit being set
+		// fmt.Printf("Debug: Setting bit for category %s at lineIndex %d\n", category, lineIndex)
+		setBit(&bitSequences[idx], lineIndex)
 	}
+	// }
+}
+
+func setBit(arr *[]byte, bitIndex int) {
+	byteIndex := bitIndex / 8
+	bitOffset := bitIndex % 8
+
+	// Debug: Print the byte index and bit offset
+	// fmt.Printf("Debug: Setting bit at byteIndex %d, bitOffset %d\n", byteIndex, bitOffset)
+
+	// Ensure the byte array has enough capacity
+	if len(*arr) <= byteIndex {
+		*arr = append(*arr, make([]byte, byteIndex-len(*arr)+1)...)
+	}
+
+	// Set the bit
+	(*arr)[byteIndex] |= 1 << bitOffset
 }
 
 // computePearsonCoefficients calculates the Pearson coefficients for all key pairs
@@ -327,11 +314,11 @@ func ensureBitCapacity(arr *[]byte, bitIndex int) {
 	}
 }
 
-func setBit(arr *[]byte, bitIndex int) {
-	byteIndex := bitIndex / 8
-	bitOffset := bitIndex % 8
-	(*arr)[byteIndex] |= 1 << bitOffset
-}
+// func setBit(arr *[]byte, bitIndex int) {
+// 	byteIndex := bitIndex / 8
+// 	bitOffset := bitIndex % 8
+// 	(*arr)[byteIndex] |= 1 << bitOffset
+// }
 
 func getBit(arr []byte, bitIndex int) int {
 	byteIndex := bitIndex / 8
@@ -421,34 +408,4 @@ var withCacheHexPrefixes = []PrefixCategory{
 	{"4f", "TrieNodeStoragePrefix"},                                   //
 	{"61", "SnapshotAccountPrefix"},
 	{"6f", "SnapshotStoragePrefix"},
-}
-
-func matchPrefix(key string) string {
-	for _, prefix := range hexPrefixes {
-		if strings.HasPrefix(key, prefix.Prefix) {
-			// fmt.Print("Matched prefix: ", prefix.Prefix, " for key: ", key, "\n")
-			return prefix.Category
-		}
-	}
-	return "Unknown"
-}
-
-// ParseLineForKeyPairCategories parses a log line containing a key pair and returns the categories of the two keys
-func ParseLineForKeyPairCategories(line string) (string, string, bool) {
-	// Regex to parse the line format
-	re := regexp.MustCompile(`key: ([a-fA-F0-9\-]+);([a-fA-F0-9\-]+); Freq: (\d+); Blocks: ([\d;]+)`)
-	matches := re.FindStringSubmatch(line)
-	if matches == nil {
-		return "", "", false
-	}
-
-	// Extract the key pair
-	key1 := matches[1]
-	key2 := matches[2]
-
-	// Match the prefixes for the two keys and get their categories
-	category1 := matchPrefix(key1)
-	category2 := matchPrefix(key2)
-
-	return category1, category2, true
 }
