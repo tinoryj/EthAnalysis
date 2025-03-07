@@ -30,12 +30,17 @@ TargetDataTypes=(
 TargetDrawPonitNumbers=(1000)
 tempFileListWithoutCache="tempFileList_without_cache.txt"
 tempFileListWithCache="tempFileList_with_cache.txt"
+if [ -f "$tempFileListWithoutCache" ]; then
+    rm "$tempFileListWithoutCache"
+fi
+if [ -f "$tempFileListWithCache" ]; then
+    rm "$tempFileListWithCache"
+fi
 for TargetDataType in "${TargetDataTypes[@]}"; do
         for TargetDrawPonitNumber in "${TargetDrawPonitNumbers[@]}"; do
             echo "Processing ${TargetDataType} ${TargetDrawPonitNumber}"
             filePathWithCache="${TargetDataType}_sample_${TargetDrawPonitNumber}_withCache.txt"
             filePathWithoutCache="${TargetDataType}_sample_${TargetDrawPonitNumber}_withoutCache.txt"
-            filePathOutput="${TargetDataType}_sample_${TargetDrawPonitNumber}.txt"
             # Check if the file exists
             if [ ! -f "${pathToData}/${filePathWithCache}" ]; then
                 echo "${pathToData}/${filePathWithCache} does not exist"
@@ -50,5 +55,5 @@ for TargetDataType in "${TargetDataTypes[@]}"; do
         done
 done
 
-python3 mergeCorrelationData.py "${tempFileListWithCache}" "${outputPath}/${filePathOutput}_withCache.txt"
-python3 mergeCorrelationData.py "${tempFileListWithoutCache}" "${outputPath}/${filePathOutput}_withoutCache.txt"
+python3 mergeCorrelationData.py "${tempFileListWithCache}" "${outputPath}/correlation_dist_0_withCache.txt"
+python3 mergeCorrelationData.py "${tempFileListWithoutCache}" "${outputPath}/correlation_dist_0_withoutCache.txt"
