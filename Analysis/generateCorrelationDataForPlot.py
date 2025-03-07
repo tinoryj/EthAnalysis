@@ -8,19 +8,12 @@ def process_file(file_path, target_count, output_file_path):
     with open(file_path, 'r') as f:
         csv_reader = csv.reader(f, delimiter=';')
         for row in csv_reader:
-            found = False
-            for cell in row:
-                if cell.startswith('Freq:'):
-                    freq_value = cell.split(':', 1)[-1].strip()
-                    freq_list.append(int(freq_value))
-                    found = True
-                    break
-            if not found:
-                freq_list.append(0)
+            freq_value = row[2].split(':', 1)[-1].strip()
+            freq_list.append(int(freq_value))
+
 
     total_rows = len(freq_list)
     indices = np.linspace(0, total_rows - 1, target_count, dtype=int)
-    
     selected_data = pd.DataFrame({
         'ID': np.arange(1, target_count + 1) / target_count,
         'Count': [freq_list[i] for i in indices]
