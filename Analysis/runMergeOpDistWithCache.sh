@@ -54,4 +54,5 @@ else
     rm -r mergedDistribution
     mkdir mergedDistribution
 fi
+
 mv *.txt mergedDistribution
