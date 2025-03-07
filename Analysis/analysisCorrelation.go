@@ -16,6 +16,8 @@ type PairInfo struct {
 	BlockIDs  string // Store block IDs as a single concatenated string
 }
 
+const outputPathPrefix = "/mnt/16T/"
+
 func MergeLogFiles(logFiles []string, outputFile string) error {
 	// Global map to store merged frequency and block information for key pairs
 	globalMap := make(map[string]PairInfo)
@@ -24,6 +26,8 @@ func MergeLogFiles(logFiles []string, outputFile string) error {
 
 	// Regex to extract key pairs, frequency, and BlockIDs
 	re := regexp.MustCompile(`key: ([a-fA-F0-9]+-[0-9]+);([a-fA-F0-9]+-[0-9]+); Freq: (\d+); Blocks: ([0-9;]+)`)
+
+	fmt.Printf("Merge log files\n")
 
 	for _, logFile := range logFiles {
 		// Open the log file
@@ -50,7 +54,7 @@ func MergeLogFiles(logFiles []string, outputFile string) error {
 			lineCount++
 
 			if lineCount%10000 == 0 {
-				fmt.Printf("\rProcessed %d lines", lineCount)
+				fmt.Printf("\rMerged %d lines", lineCount)
 			}
 
 			// Parse the line using the regex
@@ -152,6 +156,10 @@ func SortLogFile(inputFile, outputFile string) (int, error) {
 	// Read the file line by line
 	var entries []LogEntry
 	var totalFrequency int
+	lineCount := 0
+
+	fmt.Printf("Sort merged file\n")
+
 	for {
 		// Read until the next newline character
 		line, err := reader.ReadString('\n')
@@ -162,6 +170,12 @@ func SortLogFile(inputFile, outputFile string) (int, error) {
 
 		// Remove the trailing newline character
 		line = strings.TrimSuffix(line, "\n")
+
+		lineCount++
+
+		if lineCount%10000 == 0 {
+			fmt.Printf("\rProcessed %d lines", lineCount)
+		}
 
 		// Parse the frequency from the line
 		frequency, err := ParseLogLine(line)
@@ -178,6 +192,8 @@ func SortLogFile(inputFile, outputFile string) (int, error) {
 			Line:      line,
 		})
 	}
+
+	fmt.Printf("Sorting...\n")
 
 	// Sort the entries by frequency in descending order
 	sort.Slice(entries, func(i, j int) bool {
@@ -205,18 +221,18 @@ func SortLogFile(inputFile, outputFile string) (int, error) {
 func main() {
 	// Step 1: Merge log files
 
-	distance := 256
+	distance := 1024
 
 	// List of log files to merge
 	logFiles := []string{
-		"/mnt/16T/rawFreq-20599999-Dist256-homejzhaogeth-trace-2025-02-11-19-18-38.log",
-		"/mnt/16T/rawFreq-20759721-Dist256-homejzhaogeth-trace-2025-02-11-19-18-38.log",
-		"/mnt/16T/rawFreq-20884721-Dist256-mnt16Tgeth-trace-2025-02-13-15-33-09.log",
-		"/mnt/16T/rawFreq-21009721-Dist256-mnt16Tgeth-trace-2025-02-13-15-33-09.log",
-		"/mnt/16T/rawFreq-21134723-Dist256-mnt16Tgeth-trace-2025-02-13-15-33-09.log",
-		"/mnt/16T/rawFreq-21259722-Dist256-mnt16Tgeth-trace-2025-02-13-15-33-09.log",
-		"/mnt/16T/rawFreq-21379861-Dist256-mnt16Tgeth-trace-2025-02-13-15-33-09.log",
-		"/mnt/16T/rawFreq-21500000-Dist256-mnt16Tgeth-trace-2025-02-13-15-33-09.log",
+		"/mnt/16T/rawFreq-20599999-Dist1024-homejzhaogeth-trace-2025-02-11-19-18-38.log",
+		"/mnt/16T/rawFreq-20759721-Dist1024-homejzhaogeth-trace-2025-02-11-19-18-38.log",
+		"/mnt/16T/rawFreq-20884721-Dist1024-mnt16Tgeth-trace-2025-02-13-15-33-09.log",
+		"/mnt/16T/rawFreq-21009721-Dist1024-mnt16Tgeth-trace-2025-02-13-15-33-09.log",
+		"/mnt/16T/rawFreq-21134723-Dist1024-mnt16Tgeth-trace-2025-02-13-15-33-09.log",
+		"/mnt/16T/rawFreq-21259722-Dist1024-mnt16Tgeth-trace-2025-02-13-15-33-09.log",
+		"/mnt/16T/rawFreq-21379861-Dist1024-mnt16Tgeth-trace-2025-02-13-15-33-09.log",
+		"/mnt/16T/rawFreq-21500000-Dist1024-mnt16Tgeth-trace-2025-02-13-15-33-09.log",
 	}
 
 	// logFiles := []string{
@@ -225,7 +241,7 @@ func main() {
 	// }
 
 	// Output file to write the merged results
-	mergedFile := fmt.Sprintf("freq-merged-%d.log", distance)
+	mergedFile := fmt.Sprintf("%sfreq-merged-%d.log", outputPathPrefix, distance)
 
 	// Merge the log files and write the results to the output file
 	err := MergeLogFiles(logFiles, mergedFile)
@@ -237,8 +253,8 @@ func main() {
 	// Setp-2: Do sorting for the merged global log
 
 	// Input and output file paths
-	sortedLogFile := fmt.Sprintf("freq-sorted-%d.log", distance)
-	categoryFreqFile := fmt.Sprintf("freq-category-%d.log", distance)
+	sortedLogFile := fmt.Sprintf("%sfreq-sorted-%d.log", outputPathPrefix, distance)
+	categoryFreqFile := fmt.Sprintf("%sfreq-category-%d.log", outputPathPrefix, distance)
 
 	// Sort the log file and get the total frequency
 	totalFrequency, err := SortLogFile(mergedFile, sortedLogFile)
@@ -259,11 +275,20 @@ func main() {
 	fmt.Printf("Total frequency: %d\n", totalFrequency)
 
 	// Step-4: Get the category frequency
-	err = GetCategoryFrequency(sortedLogFile, categoryFreqFile)
+	err = GetCategoryFrequency(sortedLogFile, categoryFreqFile, distance, totalFrequency)
 	if err != nil {
 		fmt.Println("Error:", err)
 		return
 	}
+
+	// Print the log file sizes
+	fileInfo, err := os.Stat(sortedLogFile)
+	if err != nil {
+		fmt.Println("failed to get file info for %s: %v", sortedLogFile, err)
+		return
+	}
+	fileSizeGiB := float64(fileInfo.Size()) / (1024 * 1024 * 1024) // Convert bytes to GiB
+	fmt.Printf("Total file size of the sorted log: %.6f GiB\n", fileSizeGiB)
 
 }
 
@@ -359,7 +384,7 @@ func ParseLineForKeyPairCategories(line string) (string, string, bool) {
 	return category1, category2, true
 }
 
-func GetCategoryFrequency(inputFileName string, outputFileName string) error {
+func GetCategoryFrequency(inputFileName string, outputFileName string, distance int, totalFreq int) error {
 	// Map to store the accumulated frequencies for category pairs
 	categoryFrequencyMap := make(map[string]int)
 
@@ -382,6 +407,10 @@ func GetCategoryFrequency(inputFileName string, outputFileName string) error {
 	// Create a buffered reader for reading the file line by line
 	reader := bufio.NewReader(inputFile)
 
+	lineCount := 0
+
+	fmt.Printf("Getting category frequency...\n")
+
 	for {
 		// Read a single line
 		line, err := reader.ReadString('\n')
@@ -393,6 +422,12 @@ func GetCategoryFrequency(inputFileName string, outputFileName string) error {
 		}
 
 		line = strings.TrimSpace(line) // Remove any trailing newline or spaces
+
+		lineCount++
+
+		if lineCount%10000 == 0 {
+			fmt.Printf("\rProcessed %d lines (by category)", lineCount)
+		}
 
 		// Parse the line and extract key pairs and their categories
 		category1, category2, ok := ParseLineForKeyPairCategories(line)
@@ -422,9 +457,9 @@ func GetCategoryFrequency(inputFileName string, outputFileName string) error {
 		categoryFrequencyMap[categoryPair] += frequency
 
 		// Write the original line to the corresponding category pair file
-		fileName := fmt.Sprintf("%s-%s-freq.log", category1, category2)
+		fileName := fmt.Sprintf("%sDist%d-%s-%s-freq.log", outputPathPrefix, distance, category1, category2)
 		if category1 > category2 {
-			fileName = fmt.Sprintf("%s-%s-freq.log", category2, category1)
+			fileName = fmt.Sprintf("%sDist%d-%s-%s-freq.log", outputPathPrefix, distance, category2, category1)
 		}
 
 		// Check if the file writer already exists
@@ -444,6 +479,19 @@ func GetCategoryFrequency(inputFileName string, outputFileName string) error {
 		if err != nil {
 			return fmt.Errorf("failed to write to log file for category pair %s: %v", categoryPair, err)
 		}
+	}
+
+	for fileName, writer := range fileWriters {
+		// Close the file writer before checking the file size
+		writer.Close()
+
+		// Get the file size of the log for this category
+		fileInfo, err := os.Stat(fileName)
+		if err != nil {
+			return fmt.Errorf("failed to get file info for %s: %v", fileName, err)
+		}
+		fileSizeGiB := float64(fileInfo.Size()) / (1024 * 1024 * 1024) // Convert bytes to GiB
+		fmt.Printf("File size of log for category pair (%s): %.6f GiB\n", fileName, fileSizeGiB)
 	}
 
 	// Write the frequency map to the output file, sorted by frequency in descending order
@@ -480,6 +528,13 @@ func GetCategoryFrequency(inputFileName string, outputFileName string) error {
 		}
 	}
 
+	// write the total frequency
+	_, err = outputFile.WriteString(fmt.Sprintf("Total frequency: %d", totalFreq))
+	if err != nil {
+		return fmt.Errorf("failed to write frequency map to output file: %v", err)
+	}
+
 	fmt.Printf("Frequency map written to %s\n", outputFileName)
+
 	return nil
 }
