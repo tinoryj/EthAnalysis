@@ -20,14 +20,14 @@ if [ "$ShouldInstall" == "install" ]; then
     go get gonum.org/v1/plot/plotutil
 fi
 
-go build -o db_stats_leveldb analysisKVPrefixLeveldb.go
-go build -o db_stats_pebble analysisKVPrefixPebble.go
-go build -o countOpDistribution analysisOpDistributionByBatch.go
-go build -o countOpDistributionSingle analysisOpDistributionByBatchWithSingleFile.go
-go build -o mergeOpDist analysisOpDistributionMergeDist.go
-go build -o mergeOpTotal analysisOpDistributionMergeCount.go
+go build -o bin/db_stats_leveldb analysisKVPrefixLeveldb.go
+go build -o bin/db_stats_pebble analysisKVPrefixPebble.go
+go build -o bin/countOpDistribution analysisOpDistributionByBatch.go
+go build -o bin/countOpDistributionSingle analysisOpDistributionByBatchWithSingleFile.go
+go build -o bin/mergeOpDist analysisOpDistributionMergeDist.go
+go build -o bin/mergeOpTotal analysisOpDistributionMergeCount.go
+go build -o bin/removeEndData removeEndData.go
 # for correlation
-go build -o collect_correlation collectCorrelation.go
-go build -o analysis_correlation analysisCorrelation.go
-go build -o removeEndData removeEndData.go
-go build -o pearson analysisTop100Pearson.go
+go build -o bin/collectDistCorrelation collectCorrelation.go
+go build -o bin/analysisDistCorrelation analysisCorrelation.go
+go build -o bin/categoryPearson analysisCategoryPearson.go

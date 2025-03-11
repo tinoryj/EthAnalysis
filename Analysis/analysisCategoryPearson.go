@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"flag"
 	"fmt"
 	"io"
 	"math"
@@ -18,16 +19,7 @@ type PearsonResult struct {
 	Coeff     float64
 }
 
-func main() {
-	// Input files
-	// inputLogFile := "/home/jzhao/tst-pearson.log"
-	inputLogFile := "/mnt/16T/geth-trace-withcache-merged-block-20500000-21500000"
-
-	// Process log and compute Pearson coefficients
-	processLogAndCompute(inputLogFile)
-}
-
-func processLogAndCompute(logFile string) {
+func processLogAndCompute(logFile, outputFileName string) error {
 	file, err := os.Open(logFile)
 	if err != nil {
 		fmt.Printf("Error opening log-1: %v\n", err)
@@ -44,7 +36,7 @@ func processLogAndCompute(logFile string) {
 	var currentBlockID string
 
 	// Open a log file for writing accumulated results
-	outputFileName := fmt.Sprintf("/mnt/16T/withcache-category-pearson.log")
+	// outputFileName := fmt.Sprintf("/mnt/16T/withcache-category-pearson.log")
 	outputFile, err := os.Create(outputFileName)
 	if err != nil {
 		fmt.Printf("Error creating log file: %v\n", err)
@@ -71,12 +63,12 @@ func processLogAndCompute(logFile string) {
 	batchIndex = 0
 
 	// Create accumulators and other necessary variables
-	numPrefixes := len(withCacheHexPrefixes)
+	numPrefixes := len(withoutCacheHexPrefixes)
 	fmt.Printf("Considered prefixes num: %d\n", numPrefixes)
 
 	// accumulatedResults := make([]float64, numPrefixes*numPrefixes) // Accumulator for Pearson coefficients
 	categoryIndexMap := make(map[string]int)
-	for i, prefix := range withCacheHexPrefixes {
+	for i, prefix := range withoutCacheHexPrefixes {
 		categoryIndexMap[prefix.Category] = i
 	}
 	// Variables for per-partition processing
@@ -168,7 +160,7 @@ func processLogAndCompute(logFile string) {
 	// Add debug messages to check bitSequences before computing Pearson coefficients
 	// fmt.Println("Debug: Checking bitSequences before computing Pearson coefficients")
 	// for i := 0; i < numPrefixes; i++ {
-	// 	fmt.Printf("Category: %s, Bit Sequence: ", withCacheHexPrefixes[i].Category)
+	// 	fmt.Printf("Category: %s, Bit Sequence: ", withoutCacheHexPrefixes[i].Category)
 	// 	for j := 0; j < lineIndex; j++ {
 	// 		fmt.Printf("%d", getBit(bitSequences[i], j))
 	// 	}
@@ -183,11 +175,11 @@ func processLogAndCompute(logFile string) {
 		for j := 0; j < numPrefixes; j++ {
 			coeff := pearsonResults[i*numPrefixes+j]
 			// if coeff != 0 { // Only write non-zero coefficients
-			line := fmt.Sprintf("category1: %s; category2: %s; coeff: %.6f\n", withCacheHexPrefixes[i], withCacheHexPrefixes[j], coeff)
+			line := fmt.Sprintf("%s, %s, %.6f\n", withoutCacheHexPrefixes[i], withoutCacheHexPrefixes[j], coeff)
 			_, err := writer.WriteString(line)
 			if err != nil {
 				fmt.Printf("Error writing to log file: %v\n", err)
-				return
+				return err
 			}
 			// }
 		}
@@ -197,10 +189,12 @@ func processLogAndCompute(logFile string) {
 	err = writer.Flush()
 	if err != nil {
 		fmt.Printf("Error flushing data to log file: %v\n", err)
-		return
+		return err
 	}
 
 	fmt.Println("Pearson results written to category-pearson.log")
+
+	return err
 }
 
 // initializeBitSequences initializes a 2D slice for bit sequences
@@ -213,13 +207,13 @@ func initializeBitSequences(numKeys int) [][]byte {
 }
 
 func matchPrefix(key string) string {
-	for _, prefix := range withCacheHexPrefixes {
+	for _, prefix := range withoutCacheHexPrefixes {
 		if strings.HasPrefix(key, prefix.Prefix) {
-			fmt.Printf("Debug: Matched prefix: %s for key: %s\n", prefix.Prefix, key)
+			// fmt.Printf("Debug: Matched prefix: %s for key: %s\n", prefix.Prefix, key)
 			return prefix.Category
 		}
 	}
-	fmt.Printf("Debug: No prefix matched for key: %s\n", key)
+	// fmt.Printf("Debug: No prefix matched for key: %s\n", key)
 	return "Unknown"
 }
 
@@ -408,4 +402,28 @@ var withCacheHexPrefixes = []PrefixCategory{
 	{"4f", "TrieNodeStoragePrefix"},                                   //
 	{"61", "SnapshotAccountPrefix"},
 	{"6f", "SnapshotStoragePrefix"},
+}
+
+func main() {
+	// Define flags for input and output file names
+	inputLogFile := flag.String("i", "", "Path to the input log file")
+	outputFileName := flag.String("o", "", "Path to the output file")
+
+	// Parse command-line flags
+	flag.Parse()
+
+	// Validate that both input and output file names are provided
+	if *inputLogFile == "" || *outputFileName == "" {
+		fmt.Println("Usage: ./categoryPearson -i inputLogFile -o outputFileName")
+		os.Exit(1)
+	}
+
+	// Process log and compute Pearson coefficients
+	err := processLogAndCompute(*inputLogFile, *outputFileName)
+	if err != nil {
+		fmt.Printf("Error processing log: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("Processing completed successfully!")
 }
