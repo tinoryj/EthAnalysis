@@ -5,12 +5,10 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/signal"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -189,7 +187,7 @@ func parseLogLine(line string) (string, string, string, bool) {
 	return opType, category, key, true
 }
 
-func processLogFile(filePath string, progressInterval, targetProcessingCount, startBlockNumber, endBlockNumber uint64) {
+func processLogFile(filePath string, progressInterval uint64, startBlockNumber, endBlockNumber, stepSize uint64) {
 	file, err := os.Open(filePath)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to open file: %s", filePath))
@@ -197,15 +195,6 @@ func processLogFile(filePath string, progressInterval, targetProcessingCount, st
 	defer file.Close()
 
 	reader := bufio.NewReader(file)
-	var lineCount uint64
-	if targetProcessingCount == 0 {
-		fmt.Println("Target processing count is 0, process the whole log file")
-	} else {
-		fmt.Println("Target processing count is", targetProcessingCount)
-	}
-
-	start := time.Now()
-	lineCount = 0
 	var currentBlockID uint64
 	for {
 		line, err := reader.ReadString('\n') // Read until newline
@@ -217,7 +206,6 @@ func processLogFile(filePath string, progressInterval, targetProcessingCount, st
 			fmt.Println("Error reading file:", err)
 			return
 		}
-		lineCount++
 		// fmt.Println("Reading line:", line)
 		// Loop until find a line that contains "Processing block"
 		compareStr := "Processing block (start), ID: " + strconv.FormatUint(startBlockNumber, 10)
@@ -228,90 +216,109 @@ func processLogFile(filePath string, progressInterval, targetProcessingCount, st
 		}
 	}
 
-	fmt.Print("Skip first ", lineCount, " lines to locate the first block (ID>=", startBlockNumber, ") before processing\n")
+	currentEndBlockNumber := startBlockNumber + stepSize
+	currentStartBlockNumber := startBlockNumber
 
 	for {
-		line, err := reader.ReadString('\n') // Read until newline
-		if err != nil {
-			if err == io.EOF {
-				fmt.Println("End of file reached")
-				break
+		fmt.Println("Start processing log file, start ID:", currentStartBlockNumber, "current end ID:", currentEndBlockNumber)
+
+		var lineCount uint64
+		start := time.Now()
+		lineCount = 0
+
+		for {
+			line, err := reader.ReadString('\n') // Read until newline
+			if err != nil {
+				if err == io.EOF {
+					fmt.Println("End of file reached")
+					break
+				}
+				fmt.Println("Error reading file:", err)
+				return
 			}
-			fmt.Println("Error reading file:", err)
-			return
-		}
 
-		lineCount++
-		if lineCount == targetProcessingCount && targetProcessingCount != 0 {
-			fmt.Println("Processed", targetProcessingCount, "lines, stop processing")
-			break
-		}
+			lineCount++
 
-		if lineCount%progressInterval == 0 {
-			elapsed := time.Since(start).Seconds()
-			fmt.Printf("\rProcessed %d lines, current block ID: %d, elapsed time: %.2fs", lineCount, currentBlockID, elapsed)
-		}
+			if lineCount%progressInterval == 0 {
+				elapsed := time.Since(start).Seconds()
+				fmt.Printf("\rProcessed %d lines, current block ID: %d, elapsed time: %.2fs", lineCount, currentBlockID, elapsed)
+			}
 
-		opType, category, key, parsed := parseLogLine(line)
-		if !parsed {
-			// Check if this is a block number line
-			if strings.Contains(line, "Processing block") {
-				re := regexp.MustCompile(`ID:\s*(\d+)`)
-				matches := re.FindStringSubmatch(line)
-				if len(matches) > 1 {
-					id, err := strconv.Atoi(matches[1])
-					if err == nil {
-						currentBlockID = uint64(id)
-						if id > int(endBlockNumber) {
-							fmt.Println("Found the last block that is smaller than (", endBlockNumber, "), stop processing")
-							break
+			opType, category, key, parsed := parseLogLine(line)
+			if !parsed {
+				// Check if this is a block number line
+				if strings.Contains(line, "Processing block (start)") {
+					re := regexp.MustCompile(`ID:\s*(\d+)`)
+					matches := re.FindStringSubmatch(line)
+					if len(matches) > 1 {
+						id, err := strconv.Atoi(matches[1])
+						if err == nil {
+							currentBlockID = uint64(id)
+							if id > int(currentEndBlockNumber) {
+								fmt.Println("Found the last block that is smaller than (", currentEndBlockNumber, "), stop processing")
+								break
+							}
+						} else {
+							fmt.Println("Error converting ID to integer:", err)
 						}
-					} else {
-						fmt.Println("Error converting ID to integer:", err)
 					}
 				}
+				continue
 			}
-			continue
-		}
 
-		// Update stats
-		if _, exists := stats[category]; !exists {
-			stats[category] = &OperationStats{OpTypeCount: make(map[string]int)}
-		}
-		stats[category].OpTypeCount[opType]++
+			// Update stats
+			if _, exists := stats[category]; !exists {
+				stats[category] = &OperationStats{OpTypeCount: make(map[string]int)}
+			}
+			stats[category].OpTypeCount[opType]++
 
-		// Update operation distribution
-		if _, exists := opDistribution[category]; !exists {
-			opDistribution[category] = &OperationDistribution{
-				GetOpDistributionCount:            make(map[string]int),
-				UpdateOpDistributionCount:         make(map[string]int),
-				UpdateNotBatchOpDistributionCount: make(map[string]int),
-				DeleteOpDistributionCount:         make(map[string]int),
-				ScanOpDistributionCountRange:      make(map[string]int),
+			// Update operation distribution
+			if _, exists := opDistribution[category]; !exists {
+				opDistribution[category] = &OperationDistribution{
+					GetOpDistributionCount:            make(map[string]int),
+					UpdateOpDistributionCount:         make(map[string]int),
+					UpdateNotBatchOpDistributionCount: make(map[string]int),
+					DeleteOpDistributionCount:         make(map[string]int),
+					ScanOpDistributionCountRange:      make(map[string]int),
+				}
+			}
+			dist := opDistribution[category]
+			switch opType {
+			case "Get":
+				dist.GetOpDistributionCount[key]++
+			case "BatchPut":
+				dist.UpdateOpDistributionCount[key]++
+			case "Put":
+				dist.UpdateNotBatchOpDistributionCount[key]++
+			case "BatchDelete":
+				dist.DeleteOpDistributionCount[key]++
+			case "NewIterator":
+				dist.ScanOpDistributionCountRange[key]++
 			}
 		}
-		dist := opDistribution[category]
-		switch opType {
-		case "Get":
-			dist.GetOpDistributionCount[key]++
-		case "BatchPut":
-			dist.UpdateOpDistributionCount[key]++
-		case "Put":
-			dist.UpdateNotBatchOpDistributionCount[key]++
-		case "BatchDelete":
-			dist.DeleteOpDistributionCount[key]++
-		case "NewIterator":
-			dist.ScanOpDistributionCountRange[key]++
+		outPutLogPath := "countKVDist-" + strconv.FormatUint(currentStartBlockNumber, 10) + "_" + strconv.FormatUint(currentEndBlockNumber, 10) + ".txt"
+		filePrefix := "distribution-" + strconv.FormatUint(currentStartBlockNumber, 10) + "_" + strconv.FormatUint(currentEndBlockNumber, 10) + "_"
+		fmt.Printf("\rProcessed a total of %d lines, write results into %s.\n", lineCount, outPutLogPath)
+		file, err := os.Create(outPutLogPath)
+		if err != nil {
+			fmt.Println("Error creating output file:", outPutLogPath)
+			return
 		}
+		defer file.Close()
+		printStats(file, filePrefix)
+		currentEndBlockNumber += stepSize
+		currentStartBlockNumber += stepSize
+		// Reset stats
+		stats = make(map[string]*OperationStats)
+		opDistribution = make(map[string]*OperationDistribution)
 	}
-	fmt.Printf("\rProcessed a total of %d lines.\n", lineCount)
 }
 
 func toString(opType OPType) string {
 	return string(opType)
 }
 
-func printDistributionStats(opMap map[string]int, category string, opType OPType) {
+func printDistributionStats(opMap map[string]int, category string, opType OPType, filePrefix string) {
 	sortedOps := make([]struct {
 		Key   string
 		Count int
@@ -326,7 +333,7 @@ func printDistributionStats(opMap map[string]int, category string, opType OPType
 		return sortedOps[i].Count > sortedOps[j].Count
 	})
 
-	fileName := category + "_" + toString(opType) + "_dis.txt"
+	fileName := filePrefix + category + "_" + toString(opType) + "_dis.txt"
 	file, err := os.Create(fileName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating output file: %s\n", fileName)
@@ -340,7 +347,7 @@ func printDistributionStats(opMap map[string]int, category string, opType OPType
 	}
 }
 
-func printStats(outputFile *os.File) {
+func printStats(outputFile *os.File, filePrefix string) {
 	fmt.Fprintln(outputFile, "Count of KV operations:")
 	for category, opStats := range stats {
 		fmt.Fprintf(outputFile, "Category: %s\n", category)
@@ -353,57 +360,36 @@ func printStats(outputFile *os.File) {
 		fmt.Println("Category:", category)
 		if len(opDist.GetOpDistributionCount) > 1 {
 			fmt.Println("\tGet operation count:", len(opDist.GetOpDistributionCount))
-			printDistributionStats(opDist.GetOpDistributionCount, category, GET)
+			printDistributionStats(opDist.GetOpDistributionCount, category, GET, filePrefix)
 		}
 		if len(opDist.UpdateOpDistributionCount) > 1 {
 			fmt.Println("\tBatched put operation count:", len(opDist.UpdateOpDistributionCount))
-			printDistributionStats(opDist.UpdateOpDistributionCount, category, BATCHED_PUT)
+			printDistributionStats(opDist.UpdateOpDistributionCount, category, BATCHED_PUT, filePrefix)
 		}
 		if len(opDist.UpdateNotBatchOpDistributionCount) > 1 {
 			fmt.Println("\tPut operation count:", len(opDist.UpdateNotBatchOpDistributionCount))
-			printDistributionStats(opDist.UpdateNotBatchOpDistributionCount, category, PUT)
+			printDistributionStats(opDist.UpdateNotBatchOpDistributionCount, category, PUT, filePrefix)
 		}
 		if len(opDist.DeleteOpDistributionCount) > 1 {
 			fmt.Println("\tDelete operation count:", len(opDist.DeleteOpDistributionCount))
-			printDistributionStats(opDist.DeleteOpDistributionCount, category, DELETE)
+			printDistributionStats(opDist.DeleteOpDistributionCount, category, DELETE, filePrefix)
 		}
 		if len(opDist.ScanOpDistributionCountRange) > 1 {
 			fmt.Println("\tScan operation count:", len(opDist.ScanOpDistributionCountRange))
-			printDistributionStats(opDist.ScanOpDistributionCountRange, category, SCAN)
+			printDistributionStats(opDist.ScanOpDistributionCountRange, category, SCAN, filePrefix)
 		}
 	}
-}
-
-func signalHandler(outputFile *os.File) {
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		<-c
-		printStats(outputFile)
-		fmt.Println("Statistics written to ", outputFile.Name(), " due to Ctrl+C")
-		os.Exit(0)
-	}()
 }
 
 func main() {
 	if len(os.Args) < 6 {
-		fmt.Println("Usage: program <log_file_path> <out_put_log_path> <target_processing_count> <progress_interval> <start_block_number> <end_block_number>")
+		fmt.Println("Usage: program <log_file_path> <batch_size_for_each_output> <print_progress_interval> <start_block_number> <end_block_number>")
 		return
 	}
 	logFilePath := os.Args[1]
-	outPutLogPath := os.Args[2]
-	targetProcessingCount, _ := strconv.ParseUint(os.Args[3], 10, 64)
-	progressInterval, _ := strconv.ParseUint(os.Args[4], 10, 64)
-	startBlockNumber, _ := strconv.ParseUint(os.Args[5], 10, 64)
-	endBlockNumber, _ := strconv.ParseUint(os.Args[6], 10, 64)
-	file, err := os.Create(outPutLogPath)
-	if err != nil {
-		fmt.Println("Error creating output file:", outPutLogPath)
-		return
-	}
-	defer file.Close()
-	fmt.Println("Processing log file:", logFilePath, "output log file:", outPutLogPath, "start block ID:", startBlockNumber, "end block ID:", endBlockNumber)
-	signalHandler(file)
-	processLogFile(logFilePath, progressInterval, targetProcessingCount, startBlockNumber, endBlockNumber)
-	printStats(file)
+	stepSize, _ := strconv.ParseUint(os.Args[2], 10, 64)
+	progressInterval, _ := strconv.ParseUint(os.Args[3], 10, 64)
+	startBlockNumber, _ := strconv.ParseUint(os.Args[4], 10, 64)
+	endBlockNumber, _ := strconv.ParseUint(os.Args[5], 10, 64)
+	processLogFile(logFilePath, progressInterval, startBlockNumber, endBlockNumber, stepSize)
 }

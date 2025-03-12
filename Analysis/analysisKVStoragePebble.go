@@ -251,7 +251,7 @@ func PrintSortedHistogram(fileName string, histogram map[int]int, bucketWidth in
 		log.Printf("Cannot open the output file %s: %v", fileName, err)
 	}
 	defer outputFile.Close()
-	fmt.Fprintf(outputFile, "bucket\tcount\n")
+	fmt.Fprintf(outputFile, "size\tcount\n")
 	// Iterate through the buckets
 	for i := 0; i < len(buckets); i++ {
 		// Current bucket
@@ -279,7 +279,7 @@ func main() {
 	defer db.Close()
 
 	const bucketWidth = 1
-	const outputFilePath = "pebble-output-final.txt"
+	const outputFilePath = "pebble-database-KV-count.txt"
 	const progressInterval = 1000
 
 	prefixStatsMap := make(map[string]*PrefixStats)

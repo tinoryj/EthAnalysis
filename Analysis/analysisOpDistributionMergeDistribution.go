@@ -275,7 +275,7 @@ func printDistributionStats(opMap map[string]int, category, opType string) {
 
 func main() {
 	if len(os.Args) < 3 {
-		fmt.Println("Usage: program <log_file_path> <category> <op_type>")
+		fmt.Println("Usage: program <log_files_list_path> <category> <op_type>")
 		return
 	}
 	logFilePath := os.Args[1]
@@ -308,8 +308,8 @@ func main() {
 		fileList[line] = true
 	}
 	// process the files
-	for logFilePath := range fileList {
-		processLogFile(logFilePath, category, opType)
+	for currentLogFilePath := range fileList {
+		processLogFile(currentLogFilePath, category, opType)
 	}
 	switch opType {
 	case "get":

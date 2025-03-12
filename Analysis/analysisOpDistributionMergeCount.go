@@ -3,28 +3,52 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"log"
+	"io"
 	"os"
 	"strings"
 )
 
 func main() {
-	// Sample file list (replace with actual file paths)
-	// files := []string{"countKVDis-0-block-20500000-20600000/countKVDis.txt", "countKVDis-1-block-20600000-20700000/countKVDis.txt", "countKVDis-2-block-20700000-20800000/countKVDis.txt", "countKVDis-3-block-20700000-20800000/countKVDis.txt", "countKVDis-4-block-20800000-20900000/countKVDis.txt", "countKVDis-5-block-20900000-21000000/countKVDis.txt", "countKVDis-6-block-21000000-21100000/countKVDis.txt", "countKVDis-7-block-21100000-21200000/countKVDis.txt", "countKVDis-8-block-21200000-21300000/countKVDis.txt", "countKVDis-9-block-21300000-21400000/countKVDis.txt", "countKVDis-10-block-21400000-21500000/countKVDis.txt"}
 
-	files := []string{"/mnt/16T/GethResults/KVOpDistWithCache/countOp/countKVDis-20500000_20550000.txt", "/mnt/16T/GethResults/KVOpDistWithCache/countOp/countKVDis-20550000_20600000.txt", "/mnt/16T/GethResults/KVOpDistWithCache/countOp/countKVDis-20600000_20650000.txt", "/mnt/16T/GethResults/KVOpDistWithCache/countOp/countKVDis-20650000_20700000.txt", "/mnt/16T/GethResults/KVOpDistWithCache/countOp/countKVDis-20700000_20750000.txt", "/mnt/16T/GethResults/KVOpDistWithCache/countOp/countKVDis-20750000_20800000.txt", "/mnt/16T/GethResults/KVOpDistWithCache/countOp/countKVDis-20800000_20850000.txt", "/mnt/16T/GethResults/KVOpDistWithCache/countOp/countKVDis-20850000_20900000.txt", "/mnt/16T/GethResults/KVOpDistWithCache/countOp/countKVDis-20900000_20950000.txt", "/mnt/16T/GethResults/KVOpDistWithCache/countOp/countKVDis-20950000_21000000.txt", "/mnt/16T/GethResults/KVOpDistWithCache/countOp/countKVDis-21000000_21050000.txt", "/mnt/16T/GethResults/KVOpDistWithCache/countOp/countKVDis-21050000_21100000.txt", "/mnt/16T/GethResults/KVOpDistWithCache/countOp/countKVDis-21100000_21150000.txt", "/mnt/16T/GethResults/KVOpDistWithCache/countOp/countKVDis-21150000_21200000.txt", "/mnt/16T/GethResults/KVOpDistWithCache/countOp/countKVDis-21200000_21250000.txt", "/mnt/16T/GethResults/KVOpDistWithCache/countOp/countKVDis-21250000_21300000.txt", "/mnt/16T/GethResults/KVOpDistWithCache/countOp/countKVDis-21300000_21350000.txt", "/mnt/16T/GethResults/KVOpDistWithCache/countOp/countKVDis-21350000_21400000.txt", "/mnt/16T/GethResults/KVOpDistWithCache/countOp/countKVDis-21400000_21450000.txt", "/mnt/16T/GethResults/KVOpDistWithCache/countOp/countKVDis-21450000_21500000.txt"}
-
+	if len(os.Args) < 3 {
+		fmt.Println("Usage: program <log_files_list_path>")
+		return
+	}
+	logFilePath := os.Args[1]
+	fmt.Println("Processing log file list:", logFilePath)
+	inputFileList, err := os.Open(logFilePath)
+	if err != nil {
+		fmt.Println("Error opening file list:", logFilePath)
+		return
+	}
+	defer inputFileList.Close()
+	lineReader := bufio.NewReader(inputFileList)
+	// create a map to store the files that are being processed
+	fileList := make(map[string]bool)
+	// read the file line by line
+	for {
+		line, err := lineReader.ReadString('\n')
+		if err != nil {
+			if err == io.EOF {
+				fmt.Println("End of file reached")
+				break
+			}
+			fmt.Println("Error reading file:", err)
+			return
+		}
+		// remove the newline character
+		line = strings.TrimSuffix(line, "\n")
+		// Put the file in the map
+		fileList[line] = true
+	}
+	
 	// A map to store the aggregated counts: category -> opType -> count
 	aggregatedData := make(map[string]map[string]uint64)
 
 	// Process each file
-	for _, fileName := range files {
-		err := processFile(fileName, aggregatedData)
-		if err != nil {
-			log.Printf("Error processing file %s: %v\n", fileName, err)
-		}
+	for fileName := range fileList {
+		processFile(fileName, aggregatedData)
 	}
-
 	// Output the aggregated data
 	printAggregatedData(aggregatedData)
 }

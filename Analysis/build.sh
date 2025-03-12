@@ -20,13 +20,17 @@ if [ "$ShouldInstall" == "install" ]; then
     go get gonum.org/v1/plot/plotutil
 fi
 
-go build -o bin/db_stats_leveldb analysisKVPrefixLeveldb.go
-go build -o bin/db_stats_pebble analysisKVPrefixPebble.go
+if [ ! -d "bin" ]; then
+    mkdir bin
+else
+    rm -rf bin/*
+fi
+
+# for KV size and operation distribution
+go build -o bin/countKVSizeDistribution analysisKVStoragePebble.go
 go build -o bin/countOpDistribution analysisOpDistributionByBatch.go
-go build -o bin/countOpDistributionSingle analysisOpDistributionByBatchWithSingleFile.go
-go build -o bin/mergeOpDist analysisOpDistributionMergeDist.go
-go build -o bin/mergeOpTotal analysisOpDistributionMergeCount.go
-go build -o bin/removeEndData removeEndData.go
+go build -o bin/mergeOpDist analysisOpDistributionMergeDistribution.go
+go build -o bin/mergeOpCount analysisOpDistributionMergeCount.go
 # for correlation
 go build -o bin/collectDistCorrelation collectCorrelation.go
 go build -o bin/analysisDistCorrelation analysisCorrelation.go
