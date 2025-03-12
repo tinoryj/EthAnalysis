@@ -10,7 +10,7 @@ import (
 
 func main() {
 
-	if len(os.Args) < 3 {
+	if len(os.Args) < 2 {
 		fmt.Println("Usage: program <log_files_list_path>")
 		return
 	}
@@ -41,7 +41,7 @@ func main() {
 		// Put the file in the map
 		fileList[line] = true
 	}
-	
+
 	// A map to store the aggregated counts: category -> opType -> count
 	aggregatedData := make(map[string]map[string]uint64)
 
