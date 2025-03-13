@@ -125,7 +125,7 @@ cd ethereum/consensus
 To compile the whole project:
 
 ```bash
-cd  Analysis
+cd analysis
 ./build.sh install # Install the required packages and libraries then build the project
 ./build.sh # Build the project without installing the required packages and libraries (i.e., for the second time)
 ```
@@ -140,7 +140,7 @@ You can analyze the KV sizes of the Ethereum workloads by running the following 
 
 ```bash
 # After synchronizing the Ethereum blockchain and collecting the traces, stop the `geth` client and `prysm` beacon node first 
-cd Analysis/bin
+cd analysis/bin
 ./countKVSizeDistribution <path to the KV store> # E.g., /path/to/ethereum/execution/data/geth/chaindata
 ```
 
@@ -171,7 +171,7 @@ You can analyze the access distribution of the Ethereum workloads by running the
 
 ```bash
 # After synchronizing the Ethereum blockchain and collecting the traces, stop the `geth` client and `prysm` beacon node first
-cd Analysis/bin
+cd analysis/bin
 ./countOpDistribution <log_file_path> <batch_size_for_each_output> <print_progress_interval> <start_block_number> <end_block_number>
 # The log_file_path should be in: /path/to/ethereum/execution/geth-trace-<year>-<month>-<day>-<hour>-<minute>-<second>
 # The batch_size_for_each_output is the number of blocks for each output log file, determined by the memory size of the machine, we recommend 50000 for a machine with 64 GB memory.
@@ -208,7 +208,7 @@ Category: LastPivotKey
 Then, we can merge the output log files to get the overall access distribution:
 
 ```bash
-cd Analysis/bin
+cd analysis/bin
 # Put the real path of the result logs (distribution-*) you want to merge into a file (e.g., named "mergeOpDistFiles.txt")
 ./mergeOpDist mergeOpDistFiles.txt <data_type> <operation_type>
 # Put the real path of the result logs (countKVDist-*) you want to merge into a file (e.g., named "mergeOpCountFiles.txt")
