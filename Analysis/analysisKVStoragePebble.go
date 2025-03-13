@@ -333,7 +333,7 @@ func main() {
 	fmt.Printf("\rProcessed %d KV pairs... Done!\n", currentCount)
 
 	for prefix, stats := range prefixStatsMap {
-		fmt.Fprintf(outputFile, "Prefix: %s\n", prefix)
+		fmt.Fprintf(outputFile, "DataType: %s\n", prefix)
 		fmt.Fprintf(outputFile, "  KV pair number: %d\n", stats.Count)
 		fmt.Fprintf(outputFile, "  Average KV size: %.2f\n", stats.averageSize())
 		fmt.Fprintf(outputFile, "  Min size for keys: %d\n", stats.MinSizeKey)

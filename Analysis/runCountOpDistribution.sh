@@ -68,7 +68,7 @@ mv ./*.txt "${PATH_TO_RESULTS_DIR}/mergedDistribution"
 # Merge the count of each operation
 # Get file prefix from the results dir that start with "countDist-", cut the content after the first underscore, and sort them
 overallCountfilePathPrefixSet=()
-for file in "$PATH_TO_RESULTS_DIR"/distribution-*; do
+for file in "$PATH_TO_RESULTS_DIR"/countKVDist-*; do
     if [[ -f "$file" ]]; then
         prefix=$(basename "$file" | cut -d'_' -f1)
         overallCountfilePathPrefixSet+=("$prefix")

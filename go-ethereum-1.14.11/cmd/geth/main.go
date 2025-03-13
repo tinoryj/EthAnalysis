@@ -278,7 +278,7 @@ func init() {
 func main() {
 	// Tino: Open the global logger for trace collection
 	currentLogTime := time.Now().Format("2006-01-02-15-04-05")
-	currentLogFileName := "/home/tinoryj/geth-trace-" + currentLogTime
+	currentLogFileName := "./geth-trace-" + currentLogTime
 	if !common.InitGlobalLog(currentLogFileName) {
 		fmt.Println("Error opening global log file")
 		os.Exit(1)
