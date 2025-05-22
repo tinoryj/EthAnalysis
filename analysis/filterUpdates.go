@@ -66,6 +66,7 @@ func main() {
 	start := time.Now()
 	lineCount = 0
 	lineChangedToUpdate := 0
+	lineNotChangedToUpdate := 0
 	// scan lines in the trace file
 	reader := bufio.NewReader(trace)
 	for {
@@ -81,7 +82,7 @@ func main() {
 		lineCount++
 		if lineCount%progressInterval == 0 {
 			elapsed := time.Since(start).Seconds()
-			fmt.Printf("\rProcessed %d lines, elapsed time: %.2fs", lineCount, elapsed)
+			fmt.Printf("\rProcessed %d lines, changed %d updates, keep %d writes, elapsed time: %.2fs", lineCount, lineChangedToUpdate, lineNotChangedToUpdate, elapsed)
 		}
 		opType, key := parseLogLine(line)
 		if opType == "Put" || opType == "BatchPut" {
@@ -108,6 +109,7 @@ func main() {
 						fmt.Println("Error writing to output trace file:", err)
 					}
 					keySet[string(keyBytes)] = struct{}{}
+					lineNotChangedToUpdate++
 				}
 				// close the closer
 				if closer != nil {
@@ -125,6 +127,12 @@ func main() {
 				if closer != nil {
 					closer.Close()
 				}
+			}
+		} else {
+			// for other opTypes, write the line to the output trace file
+			_, err := outputTrace.WriteString(line)
+			if err != nil {
+				fmt.Println("Error writing to output trace file:", err)
 			}
 		}
 	}
