@@ -371,10 +371,6 @@ func printStats(outputFile *os.File, filePrefix string) {
 			fmt.Println("\tBatched put operation count:", len(opDist.PutOpDistributionCount))
 			printDistributionStats(opDist.PutOpDistributionCount, category, BATCHED_PUT, filePrefix)
 		}
-		if len(opDist.PutOpDistributionCount) > 1 {
-			fmt.Println("\tBatched put operation count:", len(opDist.PutOpDistributionCount))
-			printDistributionStats(opDist.PutOpDistributionCount, category, BATCHED_PUT, filePrefix)
-		}
 		if len(opDist.UpdateOpDistributionCount) > 1 {
 			fmt.Println("\tUpdate operation count:", len(opDist.UpdateOpDistributionCount))
 			printDistributionStats(opDist.UpdateOpDistributionCount, category, UPDATE, filePrefix)
