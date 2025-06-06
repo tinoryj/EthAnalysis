@@ -294,7 +294,6 @@ func processLogFile(filePath string, progressInterval uint64, startBlockNumber, 
 			case "Put":
 				dist.PutNotBatchOpDistributionCount[key]++
 			case "Update":
-				fmt.Print("Update operation found for key: ", key, "\n")
 				dist.UpdateOpDistributionCount[key]++
 			case "BatchDelete":
 				dist.DeleteOpDistributionCount[key]++
