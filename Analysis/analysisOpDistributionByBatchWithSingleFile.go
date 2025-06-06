@@ -32,11 +32,12 @@ type OperationStats struct {
 }
 
 type OperationDistribution struct {
-	GetOpDistributionCount            map[string]int
-	UpdateOpDistributionCount         map[string]int
-	UpdateNotBatchOpDistributionCount map[string]int
-	DeleteOpDistributionCount         map[string]int
-	ScanOpDistributionCountRange      map[string]int
+	GetOpDistributionCount            	map[string]int
+	PutOpDistributionCount         		map[string]int
+	PutNotBatchOpDistributionCount 		map[string]int
+	DeleteOpDistributionCount         	map[string]int
+	ScanOpDistributionCountRange      	map[string]int
+	UpdateOpDistributionCount          	map[string]int
 }
 
 var (
@@ -276,10 +277,11 @@ func processLogFile(filePath string, progressInterval uint64, startBlockNumber, 
 			if _, exists := opDistribution[category]; !exists {
 				opDistribution[category] = &OperationDistribution{
 					GetOpDistributionCount:            make(map[string]int),
-					UpdateOpDistributionCount:         make(map[string]int),
-					UpdateNotBatchOpDistributionCount: make(map[string]int),
+					PutOpDistributionCount:            make(map[string]int),
+					PutNotBatchOpDistributionCount:    make(map[string]int),
 					DeleteOpDistributionCount:         make(map[string]int),
 					ScanOpDistributionCountRange:      make(map[string]int),
+					UpdateOpDistributionCount:         make(map[string]int),
 				}
 			}
 			dist := opDistribution[category]
@@ -287,9 +289,11 @@ func processLogFile(filePath string, progressInterval uint64, startBlockNumber, 
 			case "Get":
 				dist.GetOpDistributionCount[key]++
 			case "BatchPut":
-				dist.UpdateOpDistributionCount[key]++
+				dist.PutOpDistributionCount[key]++
 			case "Put":
-				dist.UpdateNotBatchOpDistributionCount[key]++
+				dist.PutNotBatchOpDistributionCount[key]++
+			case "Update":
+				dist.UpdateOpDistributionCount[key]++
 			case "BatchDelete":
 				dist.DeleteOpDistributionCount[key]++
 			case "NewIterator":
@@ -362,13 +366,17 @@ func printStats(outputFile *os.File, filePrefix string) {
 			fmt.Println("\tGet operation count:", len(opDist.GetOpDistributionCount))
 			printDistributionStats(opDist.GetOpDistributionCount, category, GET, filePrefix)
 		}
-		if len(opDist.UpdateOpDistributionCount) > 1 {
-			fmt.Println("\tBatched put operation count:", len(opDist.UpdateOpDistributionCount))
-			printDistributionStats(opDist.UpdateOpDistributionCount, category, BATCHED_PUT, filePrefix)
+		if len(opDist.PutOpDistributionCount) > 1 {
+			fmt.Println("\tBatched put operation count:", len(opDist.PutOpDistributionCount))
+			printDistributionStats(opDist.PutOpDistributionCount, category, BATCHED_PUT, filePrefix)
 		}
-		if len(opDist.UpdateNotBatchOpDistributionCount) > 1 {
-			fmt.Println("\tPut operation count:", len(opDist.UpdateNotBatchOpDistributionCount))
-			printDistributionStats(opDist.UpdateNotBatchOpDistributionCount, category, PUT, filePrefix)
+		if len(opDist.PutNotBatchOpDistributionCount) > 1 {
+			fmt.Println("\tPut operation count:", len(opDist.PutNotBatchOpDistributionCount))
+			printDistributionStats(opDist.PutNotBatchOpDistributionCount, category, PUT, filePrefix)
+		}
+		if len(opDist.UpdateOpDistributionCount) > 1 {
+			fmt.Println("\tPut operation count:", len(opDist.UpdateOpDistributionCount))
+			printDistributionStats(opDist.UpdateOpDistributionCount, category, PUT, filePrefix)
 		}
 		if len(opDist.DeleteOpDistributionCount) > 1 {
 			fmt.Println("\tDelete operation count:", len(opDist.DeleteOpDistributionCount))
