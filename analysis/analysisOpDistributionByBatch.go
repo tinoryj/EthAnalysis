@@ -316,6 +316,10 @@ func processLogFile(filePath string, progressInterval uint64, startBlockNumber, 
 		// Reset stats
 		stats = make(map[string]*OperationStats)
 		opDistribution = make(map[string]*OperationDistribution)
+        if currentStartBlockNumber > endBlockNumber {
+			fmt.Println("Stop processing due to reach end block ID")
+            break
+        }
 	}
 }
 
