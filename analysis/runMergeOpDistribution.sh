@@ -13,9 +13,8 @@ for file in "$PATH_TO_RESULTS_DIR"/distribution-*; do
     if [[ -f "$file" ]]; then
         filename=$(basename "$file")
         prefix=$(echo "${filename#distribution-}" | cut -d'_' -f1-2)
-        prefix="distribution-"+prefix
+        prefix="distribution-"$prefix
         echo $prefix
-        exit
         filePathPrefixSet+=("$prefix")
     fi
 done
