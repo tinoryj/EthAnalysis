@@ -16,6 +16,7 @@ const (
 	GET         OPType = "get"
 	PUT         OPType = "put"
 	BATCHED_PUT OPType = "batchput"
+	UPDATE      OPType = "update"
 	DELETE      OPType = "delete"
 	SCAN        OPType = "scan"
 )
@@ -30,11 +31,12 @@ type OperationStats struct {
 }
 
 type OperationDistribution struct {
-	GetOpDistributionCount            map[string]int
-	UpdateOpDistributionCount         map[string]int
-	UpdateNotBatchOpDistributionCount map[string]int
-	DeleteOpDistributionCount         map[string]int
-	ScanOpDistributionCountRange      map[string]int
+	GetOpDistributionCount         map[string]int
+	PutOpDistributionCount         map[string]int
+	PutNotBatchOpDistributionCount map[string]int
+	UpdateOpDistributionCount      map[string]int
+	DeleteOpDistributionCount      map[string]int
+	ScanOpDistributionCountRange   map[string]int
 }
 
 var (
@@ -202,11 +204,12 @@ func processLogFile(filePath, category, opType string) {
 		// Update operation distribution
 		if _, exists := opDistribution[category]; !exists {
 			opDistribution[category] = &OperationDistribution{
-				GetOpDistributionCount:            make(map[string]int),
-				UpdateOpDistributionCount:         make(map[string]int),
-				UpdateNotBatchOpDistributionCount: make(map[string]int),
-				DeleteOpDistributionCount:         make(map[string]int),
-				ScanOpDistributionCountRange:      make(map[string]int),
+				GetOpDistributionCount:         make(map[string]int),
+				PutOpDistributionCount:         make(map[string]int),
+				PutNotBatchOpDistributionCount: make(map[string]int),
+				UpdateOpDistributionCount:      make(map[string]int),
+				DeleteOpDistributionCount:      make(map[string]int),
+				ScanOpDistributionCountRange:   make(map[string]int),
 			}
 		}
 		dist := opDistribution[category]
@@ -214,9 +217,11 @@ func processLogFile(filePath, category, opType string) {
 		case "get":
 			dist.GetOpDistributionCount[key] += int(count)
 		case "batchput":
-			dist.UpdateOpDistributionCount[key] += int(count)
+			dist.PutOpDistributionCount[key] += int(count)
 		case "put":
-			dist.UpdateNotBatchOpDistributionCount[key] += int(count)
+			dist.PutNotBatchOpDistributionCount[key] += int(count)
+		case "update":
+			dist.UpdateOpDistributionCount[key] += int(count)
 		case "delete":
 			dist.DeleteOpDistributionCount[key] += int(count)
 		case "scan":
@@ -315,8 +320,10 @@ func main() {
 	case "get":
 		printDistributionStats(opDistribution[category].GetOpDistributionCount, category, opType)
 	case "put":
-		printDistributionStats(opDistribution[category].UpdateNotBatchOpDistributionCount, category, opType)
+		printDistributionStats(opDistribution[category].PutNotBatchOpDistributionCount, category, opType)
 	case "batchput":
+		printDistributionStats(opDistribution[category].PutOpDistributionCount, category, opType)
+	case "update":
 		printDistributionStats(opDistribution[category].UpdateOpDistributionCount, category, opType)
 	case "delete":
 		printDistributionStats(opDistribution[category].DeleteOpDistributionCount, category, opType)
