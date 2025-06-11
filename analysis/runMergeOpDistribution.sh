@@ -59,7 +59,10 @@ mv ./*.txt "${PATH_TO_RESULTS_DIR}/mergedDistribution"
 overallCountfilePathPrefixSet=()
 for file in "$PATH_TO_RESULTS_DIR"/countKVDist-*; do
     if [[ -f "$file" ]]; then
-        prefix=$(basename "$file" | cut -d'_' -f1)
+        filename=$(basename "$file")
+        prefix=$(echo "${filename#countKVDist-}" | cut -d'_' -f1-2)
+        prefix="countKVDist-"$prefix
+        echo $prefix
         overallCountfilePathPrefixSet+=("$prefix")
     fi
 done
