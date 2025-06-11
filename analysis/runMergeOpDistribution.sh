@@ -11,7 +11,11 @@ PATH_TO_RESULTS_DIR=$1
 filePathPrefixSet=()
 for file in "$PATH_TO_RESULTS_DIR"/distribution-*; do
     if [[ -f "$file" ]]; then
-        prefix=$(basename "$file" | cut -d'_' -f1)
+        filename=$(basename "$file")
+        prefix=$(echo "${filename#distribution-}" | cut -d'_' -f1-2)
+        prefix="distribution-"+prefix
+        echo $prefix
+        exit
         filePathPrefixSet+=("$prefix")
     fi
 done
@@ -60,6 +64,7 @@ for file in "$PATH_TO_RESULTS_DIR"/countKVDist-*; do
         overallCountfilePathPrefixSet+=("$prefix")
     fi
 done
+
 mapfile -t overallCountfilePathPrefixSet < <(printf "%s\n" "${overallCountfilePathPrefixSet[@]}" | sort -u)
 for overallCountfilePathPrefix in "${overallCountfilePathPrefixSet[@]}"; do
     if [ ! -f "${PATH_TO_RESULTS_DIR}/${overallCountfilePathPrefix}_count.txt" ]; then
