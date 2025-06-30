@@ -138,6 +138,8 @@ If the compilation is successful, the executable files can be found in the `bin`
 
 The original collected trace file only contains four types of KV operations, but does not include the "updates". You can find the updates from the original KV traces by running the following command, which will find if a write is an update, and generate a new log file with five types of KV operations (i.e., writes, updates, reads, deletes, and scans):
 
+The original collected trace file contains only four types of KV operations (writes, reads, deletes, and scans) but does not distinguish "updates" from "writes". You can identify updates from the original KV traces by running the following command, which will determine if a write operation is actually an update to an existing key and generate a new trace file with five types of KV operations (writes, updates, reads, deletes, and scans). Note that we will use the enhanced trace file for the following analysis.
+
 ```bash
 # After synchronizing the Ethereum blockchain and collecting the traces, stop the `geth` client and `prysm` beacon node first
 cd analysis/bin
