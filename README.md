@@ -228,6 +228,7 @@ cd analysis/bin
 
 #### Access correlation analysis
 
+We consider two access types: reads and updates.
 
 - Co-accessed KV pair counts with distances
 
