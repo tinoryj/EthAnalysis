@@ -37,3 +37,7 @@ go build -o bin/analysisDistCorrelation analysisCorrelation.go
 go build -o bin/categoryPearson analysisCategoryPearson.go
 # for updates detection
 go build -o bin/filterUpdates filterUpdates.go
+# for update correlation
+go build -o bin/updateCorrelationCollection collectUpdateCorrelation.go
+go build -o bin/updateCorrelationAnalysis analysisUpdateCorrelation.go
+go build -o bin/filterUpdate filterUpdate.go
