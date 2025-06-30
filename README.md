@@ -134,9 +134,9 @@ If the compilation is successful, the executable files can be found in the `bin`
 
 ### Usage
 
-#### Find update from the original KV traces
+#### Enhance the trace by filtering out the updates
 
-You can find the updates from the original KV traces by running the following command, which will find if a write is actually an update, and generate a log file with the updates.
+The original collected trace file only contains four types of KV operations, but does not include the "updates". You can find the updates from the original KV traces by running the following command, which will find if a write is an update, and generate a new log file with five types of KV operations (i.e., writes, updates, reads, deletes, and scans):
 
 ```bash
 # After synchronizing the Ethereum blockchain and collecting the traces, stop the `geth` client and `prysm` beacon node first
