@@ -1,8 +1,8 @@
-# Analysis of Ethereum Workloads from KV Storage Perspective
+# An Analysis of Ethereum Workloads from a Key-Value Storage Perspective
 
 ## Introduction
 
-Blockchains have revolutionized trust and transparency in digital systems but the heavy reliance on key-value (KV) stores for managing immutable, rapidly growing data results in performance bottlenecks due to I/O inefficiencies. In this paper, we analyze Ethereum’s KV workloads using traces of billions of KV operations collected during the processing of the recent 1 M blocks. We characterize three critical dimensions: storage overhead, KV request distributions, and access correlations. Our study yields eight key findings for optimizing blockchain KV storage and caching mechanisms.
+Blockchains have revolutionized trust and transparency in distributed systems, yet their heavy reliance on key-value (KV) storage for managing immutable, rapidly growing data leads to performance bottlenecks due to I/O inefficiencies. In this paper, we analyze Ethereum's storage workload traces, with billions of KV operations, across four dimensions: storage overhead, KV operation distributions, read correlations, and update correlations. Our study reveals 11 key findings and provides suggestions on the design and optimization of blockchain storage.
 
 ## Prerequisites
 
@@ -126,13 +126,24 @@ To compile the whole project:
 
 ```bash
 cd analysis
-./build.sh install # Install the required packages and libraries then build the project
+./build.sh install # Install the required packages and libraries, then build the project
 ./build.sh # Build the project without installing the required packages and libraries (i.e., for the second time)
 ```
 
 If the compilation is successful, the executable files can be found in the `bin` folder.
 
 ### Usage
+
+#### Find update from the original KV traces
+
+You can find the updates from the original KV traces by running the following command, which will find if a write is actually an update, and generate a log file with the updates.
+
+```bash
+# After synchronizing the Ethereum blockchain and collecting the traces, stop the `geth` client and `prysm` beacon node first
+cd analysis/bin
+./filterUpdate <path to the Geth KV store> <original log file path> <output log file path>
+# E.g., Geth KV store: /path/to/ethereum/execution/data/geth/chaindata
+```
 
 #### KV sizes analysis
 
@@ -174,12 +185,12 @@ You can analyze the access distribution of the Ethereum workloads by running the
 cd analysis/bin
 ./countOpDistribution <log_file_path> <batch_size_for_each_output> <print_progress_interval> <start_block_number> <end_block_number>
 # The log_file_path should be in: /path/to/ethereum/execution/geth-trace-<year>-<month>-<day>-<hour>-<minute>-<second>
-# The batch_size_for_each_output is the number of blocks for each output log file, determined by the memory size of the machine, we recommend 50000 for a machine with 64 GB memory.
-# The print_progress_interval is the interval for printing the progress, we recommend 1000.
+# The batch_size_for_each_output is the number of blocks for each output log file, determined by the memory size of the machine. We recommend 50000 for a machine with 64 GB of memory.
+# The print_progress_interval is the interval for printing the progress; we recommend 1000.
 # The start_block_number and end_block_number are the block numbers for the trace collection.
 ```
 
-After running the command, the tool will generate a large number of output log files with the following format on names:
+After running the command, the tool will generate a large number of output log files with the following format in their names:
 
 ```text
 distribution-<batch_start_block_number>_<batch_end_block_number>_<data_type>_<kv_operation_type>_dis.txt
@@ -217,17 +228,6 @@ cd analysis/bin
 
 #### Access correlation analysis
 
-- Pearson correlation coefficients
-
-    You can compute Pearson correlation coefficients for 18 data types in CacheTrace and 16 in BareTrace which have been read.
-
-    ```bash
-    # After build
-    cd bin
-    ./categoryPearson -i inputLogFilePath -o outputLogFilePath
-    ```
-
-    Each line in the output log file is formatted as `{4f TrieNodeStoragePrefix}, {41 TrieNodeAccountPrefix}, -0.984250`, where the first two columns are the prefix and category names, and the third column is the Pearson correlation coefficient of this pair.
 
 - Co-accessed KV pair counts with distances
 
@@ -235,12 +235,12 @@ cd analysis/bin
 
 - Co-accessed information collection
     
-    You need first collect the co-accessed information by scanning the whole input log file. You should configure the input log files in `main()` of`collectCorrelation.go`:
+    You need to first collect the co-accessed information by scanning the whole input log file. You should configure the input log files in `main()` of `collectReadCorrelation.go` (for reads) or `collectUpdateCorrelation.go` (for updates):
 
-    1.  **logFiles**: input log file paths
+    1.  **logFiles**: input log file paths (in case you need to split the trace for storage)
     2.  **outputPathPrefix**: prefix of output file path
     3.  **distanceParams**: desirable distances
-    4.  **batchStartIDs, batchEndIDs**: batch start/end IDs, we split batches to avoid the OOM (note that we keep the whole frequence map which contains all co-accessed KV pairs in memory, the map can be large). 
+    4.  **batchStartIDs, batchEndIDs**: batch start/end IDs, we split batches to avoid the Out-of-Memory issues (note that we keep the whole frequency map, which contains all co-accessed KV pairs in memory, the map can be large).
 
         ```go
         func main() {
@@ -259,7 +259,7 @@ cd analysis/bin
     	    batchEndIDs := []int{20599999, 20759721, 20884721, 21009721, 21134723,  21259722, 21379861, 21500000}
 
     	    for _, logFile := range logFiles {
-    		for _, distance := range distanceParams {
+    		    for _, distance := range distanceParams {
         			err := ProcessLogBatch(logFile, distance, batchStartIDs,    batchEndIDs)
         			if err != nil {
         				fmt.Println("Error:", err)
@@ -274,18 +274,19 @@ cd analysis/bin
         ```bash
         # After build
         $ cd bin
-        $ ./collectDistCorrelation
+        $ ./collectReadCorrelation # For reads
+        $ ./collectUpdateCorrelation # For updates
         ```
 
     - What you get after execution:
         - output log files, whose names are formated as `[output path prefix]rawFreq-[batch start ID]-[batch end ID]-Dist[current distance]-[input log file path string].log`, the number of output log files depends on how many batches and distance parameters are configured.
-        - Each line in the output log file is formatted as as `key: 41070e080f08-6;41070e080f080c-7; Freq: 3; Blocks: 20499865;20499866;20499867`, recording the keys, co-accessed count (Freq) of the KV pairs, and also the IDs of the blocks that contain such co-accesses.
+        - Each line in the output log file is formatted as `key: 41070e080f08-6;41070e080f080c-7; Freq: 3; Blocks: 20499865;20499866;20499867`, recording the keys, co-accessed count (Freq) of the KV pairs, and also the IDs of the blocks that contain such co-accesses.
 
 - Analysis of co-accesses of KV pairs
 
     You can then merge the distance correlation output log batches for each distance and sort the log entries by co-access count in descending order.
 
-    - You should configure the distance and list of log files in `main()` of `analysisCorrelation.go`:
+    - You should configure the distance and list of log files in `main()` of `analysisReadCorrelation.go` (for reads) or `analysisUpdateCorrelation.go` (for updates):
 
         ```go
         func main() {
@@ -294,9 +295,8 @@ cd analysis/bin
 
         	// List of log files to merge
         	logFiles := []string{
-        		"/PATH_TO_RESULTS/rawFreqWithoutCache-20599999-Dist64-homejzhaogeth-trace-2025-02-11-19-18-38.log",
+        		"/PATH_TO_RESULTS/rawFreqWithoutCache-20599999-Dist64-trace-2025-02-11-19-18-38.log",
 	        }
-
             // ......
         }
 
@@ -307,10 +307,11 @@ cd analysis/bin
         ```bash
         # After build
         cd bin
-        ./analysisDistCorrelation
+        ./analysisReadCorrelation # For reads
+        ./analysisUpdateCorrelation # For updates
         ```
 
     - What you get after execution:
-        - The overall sorted results for each distance are put in `[output path prefix]freq-sorted-[distance].log`, with each line formatted as `key: 41070e080f08-6;41070e080f080c-7; Freq: 3; Blocks: 20499865;20499866;20499867`, recording the keys, co-accessed count (Freq) of the KV pairs, and also the IDs of the blocks that contain such co-accesses. 
-            - The overall sorted results are also partitioned by category, where each category pair has a separated log named `Dist[distance]-[category1]-[category2]-freq.log`.
+        - The overall sorted results for each distance are put in `[output path prefix]freq-sorted-[distance].log`, with each line formatted as `key: 41070e080f08-6;41070e080f080c-7; Freq: 3; Blocks: 20499865;20499866;20499867`, recording the keys, co-accessed count (Freq) of the KV pairs, and also the IDs of the blocks that contain such co-accesses.
+            - The overall sorted results are also partitioned by category, where each category pair has a separate log named `Dist[distance]-[category1]-[category2]-freq.log`.
         - The sorted results for each category under a certain distance are put in  `[output path prefix]category-sorted-[distance].log`, with each line formatted as `TrieNodeStoragePrefix;TrieNodeStoragePrefix: 165448516`, where the first two columns are category names, and the third column is the accumulated co-accessed count of these two categories.

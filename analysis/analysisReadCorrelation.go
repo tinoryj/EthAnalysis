@@ -472,14 +472,14 @@ func main() {
 
 	// List of log files to merge
 	logFiles := []string{
-		"/mnt/16T/tmp-res/rawFreqWithoutCache-20599999-Dist64-homejzhaogeth-trace-2025-02-11-19-18-38.log",
-		"/mnt/16T/tmp-res/rawFreqWithoutCache-20759721-Dist64-homejzhaogeth-trace-2025-02-11-19-18-38.log",
-		"/mnt/16T/tmp-res/rawFreqWithoutCache-20884721-Dist64-mnt16Tgeth-trace-2025-02-13-15-33-09.log",
-		"/mnt/16T/tmp-res/rawFreqWithoutCache-21009721-Dist64-mnt16Tgeth-trace-2025-02-13-15-33-09.log",
-		"/mnt/16T/tmp-res/rawFreqWithoutCache-21134723-Dist64-mnt16Tgeth-trace-2025-02-13-15-33-09.log",
-		"/mnt/16T/tmp-res/rawFreqWithoutCache-21259722-Dist64-mnt16Tgeth-trace-2025-02-13-15-33-09.log",
-		"/mnt/16T/tmp-res/rawFreqWithoutCache-21379861-Dist64-mnt16Tgeth-trace-2025-02-13-15-33-09.log",
-		"/mnt/16T/tmp-res/rawFreqWithoutCache-21500000-Dist64-mnt16Tgeth-trace-2025-02-13-15-33-09.log",
+		"./rawFreqWithoutCache-20599999-Dist64-trace-2025-02-11-19-18-38.log",
+		"./rawFreqWithoutCache-20759721-Dist64-trace-2025-02-11-19-18-38.log",
+		"./rawFreqWithoutCache-20884721-Dist64-trace-2025-02-13-15-33-09.log",
+		"./rawFreqWithoutCache-21009721-Dist64-trace-2025-02-13-15-33-09.log",
+		"./rawFreqWithoutCache-21134723-Dist64-trace-2025-02-13-15-33-09.log",
+		"./rawFreqWithoutCache-21259722-Dist64-trace-2025-02-13-15-33-09.log",
+		"./rawFreqWithoutCache-21379861-Dist64-trace-2025-02-13-15-33-09.log",
+		"./rawFreqWithoutCache-21500000-Dist64-trace-2025-02-13-15-33-09.log",
 	}
 
 	// Output file to write the merged results

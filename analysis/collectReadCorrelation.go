@@ -266,12 +266,12 @@ func findIndex(target int, batchStartIDs []int) int {
 func main() {
 	// input log files
 	logFiles := []string{
-		"/home/jzhao/geth-trace-2025-02-11-19-18-38",
-		"/mnt/16T/geth-trace-2025-02-13-15-33-09",
-		"/mnt/16T/geth-trace-withcache-merged-block-20500000-21500000",
+		"./geth-trace-2025-02-11-19-18-38",
+		"./geth-trace-2025-02-13-15-33-09",
+		"./geth-trace-withcache-merged-block-20500000-21500000",
 	}
 
-	outputPathPrefix := "/mnt/16T/"
+	outputPathPrefix := "./"
 
 	distanceParams := []int{0, 1, 4, 16, 64, 256, 1024}
 

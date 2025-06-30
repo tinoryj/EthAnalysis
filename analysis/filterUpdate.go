@@ -2,87 +2,140 @@ package main
 
 import (
 	"bufio"
+	"encoding/hex"
 	"fmt"
+	"io"
+	"log"
 	"os"
 	"regexp"
+	"time"
+
+	"github.com/cockroachdb/pebble"
 )
 
-func FilterUpdate(inputFile string, outputFile string) error {
+func parseLogLine(line string) (string, string) {
+        re := regexp.MustCompile(`OPType: (\w+(?: \w+)*), (?:key: ([a-fA-F0-9]+)|prefix: ([a-fA-F0-9]+))?`)
+        matches := re.FindStringSubmatch(line)
+        if matches == nil {
+                return "", ""
+        }
 
-	fmt.Printf("Processing %s\n", inputFile)
-	fmt.Printf("Output file: %s\n", outputFile)
+        opType := matches[1]
+        var key string
 
-	// Open the input log file
-	file, err := os.Open(inputFile)
-	if err != nil {
-		return fmt.Errorf("failed to open input file: %v", err)
-	}
-	defer file.Close()
-
-	output, err := os.Create(outputFile)
-	if err != nil {
-		return fmt.Errorf("failed to create output file: %v", err)
-	}
-	defer output.Close()
-
-	opUpdateRegex := regexp.MustCompile(`OPType: Update, key: ([0-9a-fA-F]+), size: (\d+)`)
-
-	// var opUpdateLines []string // Slice to store "OPType: Update" lines within the current block
-
-	// Create a buffered reader
-	reader := bufio.NewReader(file)
-
-	var lineCount uint64
-	lineCount = 0
-
-	for {
-		line, err := reader.ReadString('\n')
-
-		// Process the line if it's not empty (even if err != nil)
-		if len(line) > 0 {
-			lineCount++
-
-			if lineCount%10000 == 0 {
-				fmt.Printf("\rProcessed %d lines", lineCount)
-			}
-
-			if opUpdateRegex.MatchString(line) {
-				_, writeErr := output.WriteString(line)
-				if writeErr != nil {
-					fmt.Printf("\nError writing to output file: %v\n", writeErr)
-				}
-			}
-		}
-
-		// Break only after processing the line
-		if err != nil {
-			break
-		}
-	}
-
-	return nil
+        // Always set key, preferring the 'key' value, and fallback to 'prefix'
+        if matches[2] != "" {
+                key = matches[2]
+        } else if matches[3] != "" {
+                key = matches[3]
+        } else {
+                key = ""
+        }
+        return opType, key
 }
 
 func main() {
-	// input log files
-	logFile := "/mnt/lvm_data/FAST-26-EthAnalysis/Traces/new/geth-trace-withcache-merged-filtered-block-20500000-21500000"
+        dbFile := os.Args[1]
+        db, err := pebble.Open(dbFile, &pebble.Options{})
+        if err != nil {
+                log.Fatalf("Cannot open target database, err: %v\n", err)
+        }
+        defer db.Close()
 
-	// logFile := "/mnt/lvm_data/FAST-26-EthAnalysis/Traces/new/tstupdate"
+        traceFile := os.Args[2]
+        trace, err := os.Open(traceFile)
+        if err != nil {
+                log.Fatalf("Cannot open trace file, err: %v\n", err)
+        }
+        defer trace.Close()
 
-	outputFile := "/mnt/lvm_data/FAST-26-EthAnalysis/Traces/new/filtered-geth-trace-withcache-merged-filtered-block-20500000-21500000"
+        outputTraceFile := os.Args[3]
+        outputTrace, err := os.Create(outputTraceFile)
+        if err != nil {
+                log.Fatalf("Cannot create output trace file, err: %v\n", err)
+        }
+        defer outputTrace.Close()
 
-	err := FilterUpdate(logFile, outputFile)
-	if err != nil {
-		fmt.Println("Error:", err)
-	}
+        const progressInterval = 1000
 
-	logFile2 := "/mnt/lvm_data/FAST-26-EthAnalysis/Traces/new/geth-trace-without-cache-merged-filtered-block-20500000-21500000"
+        // Build a set to record the newly writed keys
+        keySet := make(map[string]struct{})
 
-	outputFile2 := "/mnt/lvm_data/FAST-26-EthAnalysis/Traces/new/filtered-geth-trace-without-cache-merged-filtered-block-20500000-21500000"
-
-	err = FilterUpdate(logFile2, outputFile2)
-	if err != nil {
-		fmt.Println("Error:", err)
-	}
-	fmt.Println("\nProcessing completed successfully.")
+        fmt.Printf("Start processing KV operations\n")
+        var lineCount uint64
+        start := time.Now()
+        lineCount = 0
+        lineChangedToUpdate := 0
+        lineNotChangedToUpdate := 0
+        // scan lines in the trace file
+        reader := bufio.NewReader(trace)
+        for {
+                line, err := reader.ReadString('\n') // Read until newline
+                if err != nil {
+                        if err == io.EOF {
+                                fmt.Println("End of file reached")
+                                break
+                        }
+                        fmt.Println("Error reading file:", err)
+                        return
+                }
+                lineCount++
+                if lineCount%progressInterval == 0 {
+                        elapsed := time.Since(start).Seconds()
+                        fmt.Printf("\rProcessed %d lines, changed %d updates, keep %d writes, elapsed time: %.2fs", lineCount, lineChangedToUpdate, lineNotChangedToUpdate, elapsed)
+                }
+                opType, key := parseLogLine(line)
+                if opType == "Put" || opType == "BatchPut" {
+                        // convert hex key to bytes
+                        keyBytes, err := hex.DecodeString(key)
+                        if err != nil {
+                                fmt.Println("Error decoding hex key:", err)
+                                continue
+                        }
+                        // check if the key exists in the database
+                        // if it does, write the line to the output trace file
+                        _, closer, err := db.Get(keyBytes)
+                        if err != nil {
+                                if _, exists := keySet[string(keyBytes)]; exists {
+                                        line = regexp.MustCompile(`OPType: \w+`).ReplaceAllString(line, "OPType: Update")
+                                        _, err = outputTrace.WriteString(line)
+                                        lineChangedToUpdate++
+                                        if err != nil {
+                                                fmt.Println("Error writing to output trace file:", err)
+                                        }
+                                } else {
+                                        _, err := outputTrace.WriteString(line)
+                                        if err != nil {
+                                                fmt.Println("Error writing to output trace file:", err)
+                                        }
+                                        keySet[string(keyBytes)] = struct{}{}
+                                        lineNotChangedToUpdate++
+                                }
+                                // close the closer
+                                if closer != nil {
+                                        closer.Close()
+                                }
+                        } else {
+                                // Key found, change the opType to "Update" and write the original line (with Update opType) to the output trace file
+                                line = regexp.MustCompile(`OPType: \w+`).ReplaceAllString(line, "OPType: Update")
+                                _, err = outputTrace.WriteString(line)
+                                lineChangedToUpdate++
+                                if err != nil {
+                                        fmt.Println("Error writing to output trace file:", err)
+                                }
+                                // close the closer
+                                if closer != nil {
+                                        closer.Close()
+                                }
+                        }
+                } else {
+                        // for other opTypes, write the line to the output trace file
+                        _, err := outputTrace.WriteString(line)
+                        if err != nil {
+                                fmt.Println("Error writing to output trace file:", err)
+                        }
+                }
+        }
+        // print the number of lines changed to Update
+        fmt.Printf("\nNumber of lines changed to Update: %d\n", lineChangedToUpdate)
 }
