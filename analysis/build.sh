@@ -35,6 +35,8 @@ go build -o bin/mergeOpCount analysisOpDistributionMergeCount.go
 go build -o bin/collectReadCorrelation collectReadCorrelation.go
 go build -o bin/analysisReadCorrelation analysisReadCorrelation.go
 go build -o bin/categoryPearson analysisCategoryPearson.go
+# for updates detection
+go build -o bin/filterUpdates filterUpdates.go
 # for update correlation
 go build -o bin/collectUpdateCorrelation collectUpdateCorrelation.go
 go build -o bin/analysisUpdateCorrelation analysisUpdateCorrelation.go
