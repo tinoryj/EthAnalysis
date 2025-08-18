@@ -38,11 +38,13 @@ We use the `geth` execution client and `prysm` beacon node to synchronize the Et
 Modify the file `go-ethereum-1.14.11/common/globalTraceLog.go` to enable the trace collection:
 
 ```go
-var targetBlockNumber uint64 = 21500000 // we will use 20500000 to 21500000 as the target block range
+var targetBlockNumber uint64 = 1000 // we will use 20500000 to 21500000 as the target block range
 var shouldGlobalLogInUse bool = true
 ```
 
 First, you need to modify the `targetBlockNumber` to specify the stop block number for the trace collection. Then, set the `shouldGlobalLogInUse` to `true` to enable the trace collection. In addition, before collecting the trace, you may configure the `targetBlockNumber` to specify the block number that you want to start the trace collection and synchronize the Ethereum blockchain.
+
+The collected traces will be stored in the path where the `geth` client is run, with the file name format `geth-trace-<year>-<month>-<day>-<hour>-<minute>-<second>`. For example, if you run the `geth` client at `2025-08-01 00:00:00`, the trace log file will be named `geth-trace-2025-08-01-00-00-00`.
 
 #### Build the modified `geth` client
 
@@ -57,7 +59,7 @@ make
 
 ```bash
 cd go-ethereum-1.14.11/build/bin
-cp geth <path to store the binary and run the client> # E.g., ethereum/execution/geth
+cp geth <path to store the binary and run the client> # E.g., ethereum/execution/geth, see below
 ```
 
 ### Collect the traces
@@ -92,6 +94,7 @@ Run the `geth` client to synchronize the Ethereum blockchain and collect the tra
 
 ```bash
 cd ethereum/execution
+cp ../../go-ethereum-1.14.11/build/bin/geth . # Copy the modified geth client binary to the current folder
 mkdir data
 export GOMAXPROCS=1 # Set the number of threads to 1 (default is the number of CPU cores)
 ./geth --cache 0 --cache.noprefetch --snapshot --mainnet --datadir ./data --syncmode full --http --http.api eth,net,engine,admin --authrpc.jwtsecret ../jwt.hex
@@ -106,7 +109,7 @@ export GOMAXPROCS=1 # Set the number of threads to 1 (default is the number of C
 cd ethereum/execution
 mkdir data
 export GOMAXPROCS=1 # Set the number of threads to 1 (default is the number of CPU cores)
-./geth  --cache.noprefetch --mainnet --datadir ./data --syncmode full --http --http.api eth,net,engine,admin --authrpc.jwtsecret ../jwt.hex
+./geth --cache.noprefetch --mainnet --datadir ./data --syncmode full --http --http.api eth,net,engine,admin --authrpc.jwtsecret ../jwt.hex
 ```
 
 #### Run the `prysm` beacon node
@@ -258,7 +261,7 @@ cd analysis/bin
     	    batchStartIDs := []int{20500000, 20600000, 20759722, 20884722, 21009722,    21134724, 21259723, 21379862}
     	    batchEndIDs := []int{20599999, 20759721, 20884721, 21009721, 21134723,  21259722, 21379861, 21500000}
 
-    	    for _, logFile := range logFiles {
+    	  for _, logFile := range logFiles {
     		for _, distance := range distanceParams {
         			err := ProcessLogBatch(logFile, distance, batchStartIDs,    batchEndIDs)
         			if err != nil {

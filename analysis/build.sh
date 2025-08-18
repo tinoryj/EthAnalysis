@@ -15,29 +15,31 @@ if [ "$ShouldInstall" == "install" ]; then
     go get github.com/golang/protobuf/proto
     go get github.com/prometheus/client_model/go@v0.2.1-0.20210607210712-147c58e9608a
     go get github.com/golang/snappy
-    go get gonum.org/v1/plot
-    go get gonum.org/v1/plot/plotter
-    go get gonum.org/v1/plot/plotutil
-fi
-
-if [ ! -d "bin" ]; then
-    mkdir bin
+elif [ "$ShouldInstall" == "build" ]; then
+    if [ ! -d "bin" ]; then
+        mkdir bin
+    else
+        rm -rf bin/*
+    fi
+    # for KV size
+    go build -o bin/countKVSizeDistribution analysisKVStoragePebble.go
+    # for KV operation distribution
+    go build -o bin/countOpDistribution analysisOpDistributionByBatch.go
+    go build -o bin/mergeOpDist analysisOpDistributionMergeDistribution.go
+    go build -o bin/countMergedOp analysisOpDistributionMergeCount.go
+    # for read correlation
+    go build -o bin/readCorrelationCollection collectReadCorrelation.go
+    go build -o bin/readCorrelationAnalysis analysisReadCorrelation.go
+    # for updates detection
+    go build -o bin/filterUpdates filterUpdates.go
+    # for update correlation
+    go build -o bin/updateCorrelationCollection collectUpdateCorrelation.go
+    go build -o bin/updateCorrelationAnalysis analysisUpdateCorrelation.go
 else
-    rm -rf bin/*
+    echo "Usage: $0 install|build"
+    echo "  install: Install the required Go modules and build the analysis tools."
+    echo "  build: Build the analysis tools without installing modules."
+    exit 1
 fi
 
-# for KV size and operation distribution
-go build -o bin/countKVSizeDistribution analysisKVStoragePebble.go
-go build -o bin/countOpDistribution analysisOpDistributionByBatch.go
-go build -o bin/mergeOpDist analysisOpDistributionMergeDistribution.go
-go build -o bin/mergeOpCount analysisOpDistributionMergeCount.go
-# for correlation
-go build -o bin/collectDistCorrelation collectCorrelation.go
-go build -o bin/analysisDistCorrelation analysisCorrelation.go
-go build -o bin/categoryPearson analysisCategoryPearson.go
-# for updates detection
-go build -o bin/filterUpdates filterUpdates.go
-# for update correlation
-go build -o bin/updateCorrelationCollection collectUpdateCorrelation.go
-go build -o bin/updateCorrelationAnalysis analysisUpdateCorrelation.go
-go build -o bin/filterUpdate filterUpdate.go
+

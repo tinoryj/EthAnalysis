@@ -11,7 +11,7 @@ import (
 // Tino: global logger for trace collection
 var gethLogger *syslog.Logger
 var logFile *os.File
-var targetBlockNumber uint64 = 21500000 // we will use 20500000 to 21500000 as the target block range
+var targetBlockNumber uint64 = 1000 // we will use 20500000 to 21500000 as the target block range
 var shouldGlobalLogInUse bool = true
 
 var logIsInitiated bool = false
@@ -30,13 +30,16 @@ func WriteGlobalLog(msg string) {
 	}
 }
 
-func InitGlobalLog(filePath string) bool {
+func InitGlobalLog() bool {
+	currentLogTime := time.Now().Format("2006-01-02-15-04-05")
+	currentLogFileName := "./geth-trace-" + currentLogTime
+	
 	if ! shouldGlobalLogInUse {
 		fmt.Println("Global log should not in use.")
 		return true
 	}
 	// Tino: Open the global logger for trace collection
-	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0666)
+	file, err := os.OpenFile(currentLogFileName, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0666)
 	if err != nil {
 		fmt.Println("Error opening global log file:", err)
 		logIsInitiated = false

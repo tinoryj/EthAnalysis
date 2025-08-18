@@ -1,7 +1,0 @@
-bin/*
-*.txt
-*.png
-go.mod
-go.sum
-*.pdf
-*.log
