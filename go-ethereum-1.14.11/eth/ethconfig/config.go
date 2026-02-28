@@ -53,7 +53,7 @@ var Defaults = Config{
 	TxLookupLimit:      2350000,
 	TransactionHistory: 2350000,
 	StateHistory:       params.FullImmutabilityThreshold,
-	DatabaseCache:      512,
+	DatabaseCache:      0, //512
 	TrieCleanCache:     0, //154,
 	TrieDirtyCache:     0, //256,
 	TrieTimeout:        60 * time.Minute,
